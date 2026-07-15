@@ -1,14 +1,18 @@
-"""Amber Electric price adapters.
+"""Amber Electric price adapter (Amber Express HACS integration only).
 
-AmberExpressAdapter (primary): parses the `forecast` attribute of the Amber
-Express price sensors — a list of {time, value} entries in $/kWh where the
-values are Amber's advanced price prediction and the first entry is the
-current interval. On a 5-minute site entries are 5-min near-term then 30-min.
+AmberExpressAdapter parses the `forecast` attribute of the Amber Express
+price sensors — a list of {time, value} entries in $/kWh where the values are
+Amber's advanced price prediction and the first entry is the current
+interval. On a 5-minute site entries are 5-min near-term then 30-min.
 
-Sign conventions (locked to tests/fixtures/amber_express_feed_in_price.yaml,
-captured from Dan's install): feed-in values arrive positive = export revenue,
-which is HEM's internal convention — no flip. Negative feed-in (paying to
-export) passes through as negative.
+Sign conventions (locked to tests/fixtures/amber_express_feed_in_price.yaml):
+feed-in arrives positive = export revenue, matching HEM's convention — no
+flip. Negative feed-in (paying to export) passes through as negative.
+
+The HA core `amberelectric` integration is deliberately NOT supported (its
+`forecasts` attribute has 2dp price resolution and no advanced-price mode);
+Amber Express is free, strictly better for optimization, and what HEM tests
+against.
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from hem.config import Entities
 from hem.ha.client import HaClient, State
@@ -25,6 +29,10 @@ from hem.models import PriceForecast, Series
 log = logging.getLogger(__name__)
 
 SPIKE_ACTIVE_STATES = frozenset({"on"})
+
+
+class PriceProvider(Protocol):
+    async def get_prices(self) -> PriceForecast: ...
 
 
 class PriceParseError(Exception):

@@ -34,6 +34,7 @@ class EnvSettings(BaseSettings):
     ha_token: str = ""  # HEM_HA_TOKEN, standalone only
     options_file: Path | None = None  # HEM_OPTIONS_FILE
     data_dir: Path | None = None  # HEM_DATA_DIR (history/recordings)
+    log_level: str = ""  # HEM_LOG_LEVEL, overrides options log_level when set
 
 
 @dataclass(frozen=True)
@@ -79,8 +80,8 @@ def resolve_data_dir(env: EnvSettings, supervisor_token: str | None = None) -> P
 class Entities(BaseModel):
     buy_price: str
     sell_price: str
-    # For amber_express the forecast attributes live on the price sensors, so these
-    # default to the price sensors. For amber_core point them at the Forecast sensors.
+    # Amber Express forecast attributes live on the price sensors, so these
+    # default to the price sensors; override only for exotic setups.
     buy_forecast: str = ""
     sell_forecast: str = ""
     price_spike: str = ""
@@ -183,7 +184,6 @@ class Control(BaseModel):
 
 
 class Settings(BaseModel):
-    price_source: Literal["amber_express", "amber_core"] = "amber_express"
     entities: Entities
     battery: Battery
     grid: Grid

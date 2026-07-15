@@ -26,9 +26,21 @@ class BatteryParseError(Exception):
 
 def parse_soc_fraction(state: State) -> float:
     value = state.as_float()
-    unit = state.attributes.get("unit_of_measurement", "")
-    if unit == "%" or value > 1.5:
+    unit = state.attributes.get("unit_of_measurement") or ""
+    if unit == "%":
         value /= 100.0
+    elif not unit:
+        if value > 1.5:
+            value /= 100.0  # unambiguously a percentage
+        else:
+            # 0..1.5 without a unit: fraction 1.0 or a nearly-empty battery in
+            # %? Guessing wrong means discharging an empty battery — refuse.
+            raise BatteryParseError(
+                f"{state.entity_id}: SoC {value} without unit_of_measurement is "
+                "ambiguous (fraction or %?) — use a sensor that declares '%'"
+            )
+    else:
+        raise BatteryParseError(f"{state.entity_id}: unexpected SoC unit {unit!r}")
     if not 0.0 <= value <= 1.0:
         raise BatteryParseError(f"{state.entity_id}: SoC {value} outside [0, 1]")
     return value
@@ -36,11 +48,15 @@ def parse_soc_fraction(state: State) -> float:
 
 def parse_power_kw(state: State, charge_positive: bool) -> float:
     value = state.as_float()
-    unit = state.attributes.get("unit_of_measurement", "").lower()
+    unit = (state.attributes.get("unit_of_measurement") or "").lower()
     if unit == "w":
         value /= 1000.0
-    elif unit not in ("kw", ""):
-        raise BatteryParseError(f"{state.entity_id}: unexpected power unit {unit!r}")
+    elif unit != "kw":
+        # No silent guessing: a W sensor read as kW is off by 1000x.
+        raise BatteryParseError(
+            f"{state.entity_id}: power unit {unit!r} not recognised — the sensor "
+            "must declare W or kW"
+        )
     return value if charge_positive else -value
 
 

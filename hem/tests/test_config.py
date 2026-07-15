@@ -29,7 +29,6 @@ def write_options(tmp_path: Path, options: dict) -> Path:
 
 def test_load_minimal_options(tmp_path: Path):
     settings = load_settings(write_options(tmp_path, MINIMAL_OPTIONS))
-    assert settings.price_source == "amber_express"
     assert settings.control.mode == "dry_run"
     assert settings.optimizer.horizon_hours == 36
     assert settings.battery.soc_min == 0.10

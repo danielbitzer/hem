@@ -1,4 +1,4 @@
-"""Async Home Assistant client (REST now; WebSocket subscription arrives in Phase 2).
+"""Async Home Assistant client (REST + WebSocket state watching).
 
 Works identically against the Supervisor proxy (add-on) and a direct HA URL with a
 long-lived token (dev) — the difference is entirely in the HaConnection it's given.
@@ -6,6 +6,7 @@ long-lived token (dev) — the difference is entirely in the HaConnection it's g
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -143,16 +144,23 @@ class HaClient:
         is a latency optimization, not a correctness requirement.
         """
         async with self.session.ws_connect(self._conn.ws_url, heartbeat=30) as ws:
-            first = await ws.receive_json()
-            if first.get("type") != "auth_required":
-                raise RuntimeError(f"unexpected WS greeting: {first.get('type')}")
-            await ws.send_json({"type": "auth", "access_token": self._conn.token})
-            auth = await ws.receive_json()
-            if auth.get("type") != "auth_ok":
-                raise RuntimeError(f"WebSocket auth failed: {auth}")
-            await ws.send_json(
-                {"id": 1, "type": "subscribe_events", "event_type": "state_changed"}
-            )
+            # The proxy can accept the socket while core is down and keep the
+            # connection alive with protocol pongs — without a handshake
+            # timeout the watcher would hang forever, silently deaf.
+            async with asyncio.timeout(15):
+                first = await ws.receive_json()
+                if first.get("type") != "auth_required":
+                    raise RuntimeError(f"unexpected WS greeting: {first.get('type')}")
+                await ws.send_json({"type": "auth", "access_token": self._conn.token})
+                auth = await ws.receive_json()
+                if auth.get("type") != "auth_ok":
+                    raise RuntimeError(f"WebSocket auth failed: {auth}")
+                await ws.send_json(
+                    {"id": 1, "type": "subscribe_events", "event_type": "state_changed"}
+                )
+                result = await ws.receive_json()
+                if result.get("type") != "result" or not result.get("success"):
+                    raise RuntimeError(f"WS subscription rejected: {result}")
             log.info("watching %d entities for state changes", len(entity_ids))
             async for msg in ws:
                 if msg.type != aiohttp.WSMsgType.TEXT:

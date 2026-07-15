@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 
-from hem.adapters.amber import AmberExpressAdapter
+from hem.adapters.amber import PriceProvider
 from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
 from hem.adapters.weather import WeatherAdapter
@@ -111,7 +111,7 @@ class Planner:
         self,
         settings: Settings,
         *,
-        prices: AmberExpressAdapter,
+        prices: PriceProvider,
         solar: OpenMeteoSolarAdapter,
         battery: SungrowAdapter,
         weather: WeatherAdapter,

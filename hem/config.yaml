@@ -15,7 +15,6 @@ panel_icon: mdi:battery-charging
 panel_title: Energy Manager
 watchdog: http://[HOST]:[PORT:8099]/health
 options:
-  price_source: amber_express
   entities:
     buy_price: sensor.amber_express_general_price
     sell_price: sensor.amber_express_feed_in_price
@@ -68,9 +67,18 @@ options:
   control:
     mode: dry_run
     max_writes_per_hour: 12
+    entities:
+      ems_mode_select: select.sungrow_ems_mode
+      ems_self_consumption_option: "Self-consumption mode (default)"
+      ems_forced_option: "Forced mode"
+      forced_cmd_select: select.sungrow_battery_forced_charge_discharge_cmd
+      forced_charge_option: "Forced charge"
+      forced_discharge_option: "Forced discharge"
+      forced_stop_option: "Stop (default)"
+      forced_power_number: number.sungrow_battery_forced_charge_discharge_power
+      override_boolean: input_boolean.hem_override
   log_level: info
 schema:
-  price_source: list(amber_express|amber_core)
   entities:
     buy_price: str
     sell_price: str

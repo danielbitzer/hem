@@ -155,7 +155,7 @@ async def run() -> None:
     env = EnvSettings()  # HEM_* env vars, plus ./.env in dev
     settings = load_settings(env.options_file)
     logging.basicConfig(
-        level=settings.log_level.upper(),
+        level=(env.log_level or settings.log_level).upper(),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     conn = resolve_connection(env)

@@ -6,17 +6,18 @@ MILP (CVXPY + HiGHS) re-solved every 5 minutes.
 
 Inputs (all via existing HA integrations — no glue automations needed):
 
-- **Prices**: [Amber Express](https://github.com/hass-energy/amber-express) (recommended)
-  or the core `amberelectric` integration
+- **Prices**: [Amber Express](https://github.com/hass-energy/amber-express)
+  (set to advanced-price mode; the core `amberelectric` integration is not supported)
 - **Solar forecast**: [Open-Meteo Solar Forecast](https://github.com/rany2/ha-open-meteo-solar-forecast)
 - **Battery/inverter**: Sungrow SHx via the
   [mkaiser Modbus package](https://github.com/mkaiser/Sungrow-SHx-Inverter-Modbus-Home-Assistant)
 - **Temperature forecast**: any HA `weather.*` entity (drives the rule-based load forecast)
 
-Outputs (dry-run mode): `sensor.hem_action`, `sensor.hem_power_setpoint`,
-`sensor.hem_soc_target`, `sensor.hem_horizon_cost`, `sensor.hem_plan`, `sensor.hem_status`.
-Write-mode control of the inverter is planned behind a config switch (see
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)).
+Outputs (dry-run mode, the default): `sensor.hem_action`, `sensor.hem_power_setpoint`,
+`sensor.hem_soc_target`, `sensor.hem_horizon_cost`, `sensor.hem_plan`, `sensor.hem_status`,
+plus an ingress dashboard. Setting `control.mode: active` makes HEM drive the inverter —
+read the active-mode checklist in [hem/DOCS.md](hem/DOCS.md) first (watchdog blueprint,
+override helper, entity verification).
 
 ## Install (HA OS / Supervised)
 

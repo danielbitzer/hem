@@ -21,8 +21,11 @@ def test_soc_percent_inferred_without_unit():
     assert parse_soc_fraction(state("sensor.battery_level", "72.5")) == pytest.approx(0.725)
 
 
-def test_soc_fraction_passthrough():
-    assert parse_soc_fraction(state("sensor.battery_level", "0.72")) == pytest.approx(0.72)
+def test_soc_ambiguous_low_value_without_unit_rejected():
+    """0.72 without a unit could be 72% (fraction) or a nearly-flat battery at
+    0.72% — guessing wrong discharges an empty battery, so refuse."""
+    with pytest.raises(BatteryParseError, match="ambiguous"):
+        parse_soc_fraction(state("sensor.battery_level", "0.72"))
 
 
 def test_soc_out_of_range_rejected():
@@ -36,6 +39,22 @@ def test_power_watts_converted():
 
 def test_power_kw_passthrough():
     assert parse_power_kw(state("sensor.battery_power", "-3.2", "kW"), True) == pytest.approx(-3.2)
+
+
+def test_power_missing_unit_rejected():
+    with pytest.raises(BatteryParseError, match="not recognised"):
+        parse_power_kw(state("sensor.battery_power", "2500"), True)
+
+
+def test_power_null_unit_attribute_rejected_cleanly():
+    s = State(
+        entity_id="sensor.battery_power",
+        state="2500",
+        attributes={"unit_of_measurement": None},
+        last_updated=TS,
+    )
+    with pytest.raises(BatteryParseError, match="not recognised"):
+        parse_power_kw(s, True)
 
 
 def test_power_sign_convention_flip():

@@ -10,8 +10,9 @@ nothing is written to your inverter.
 
 ## Prerequisites
 
-- [Amber Express](https://github.com/hass-energy/amber-express) (recommended; set its
-  pricing mode to **advanced price**) or the core Amber Electric integration
+- [Amber Express](https://github.com/hass-energy/amber-express) with its pricing mode
+  set to **advanced price** (the core Amber Electric integration is not supported —
+  its forecast attribute has 1c price resolution and no advanced-price mode)
 - [Open-Meteo Solar Forecast](https://github.com/rany2/ha-open-meteo-solar-forecast)
 - Battery SoC/power sensors (e.g. the
   [mkaiser Sungrow Modbus package](https://github.com/mkaiser/Sungrow-SHx-Inverter-Modbus-Home-Assistant))
@@ -21,10 +22,9 @@ nothing is written to your inverter.
 
 ### `entities`
 
-Point each option at your entity IDs. For Amber Express the forecast attributes live on
-the price sensors themselves, so `buy_forecast`/`sell_forecast` can be left empty (they
-default to the price sensors). For the core Amber integration set them to the dedicated
-Forecast sensors.
+Point each option at your entity IDs. Amber Express's forecast attributes live on
+the price sensors themselves, so `buy_forecast`/`sell_forecast` can normally be left
+empty (they default to the price sensors).
 
 ### `battery`
 
@@ -53,6 +53,24 @@ optimizer respects both simultaneously.
 
 24 hourly baseline kW values for weekdays and weekends, plus temperature rules that add
 heating/cooling load when the forecast temperature crosses a threshold.
+
+### `optimizer`
+
+- `horizon_hours` (36) — how far ahead each plan looks. Longer sees more of
+  tomorrow's solar; beyond the price forecast the tail is padded (shaded on
+  the dashboard).
+- `terminal_soc_value` — how leftover stored energy is valued at the horizon
+  end, in **$/kWh** (it is NOT a target SoC). `auto` = median buy price ×
+  discharge efficiency − wear cost, i.e. "what buying that energy later would
+  plausibly cost". Without it the optimizer would dump the battery at any
+  positive price before the horizon.
+- `solver_timeout_s` (30, max 60) — HiGHS time limit per solve; normal solves
+  take tens of milliseconds.
+- `action_switch_threshold_dollars` (0.02) — hysteresis: the current action
+  only changes if switching improves the horizon objective by more than this.
+- `forecast_haircut` (0.2) — fraction of the above-median excess shaved off
+  sell prices more than 6 h out, so distant phantom spikes don't distort
+  near-term decisions. The spike reserve reads raw prices, unaffected.
 
 ### `spike`
 
