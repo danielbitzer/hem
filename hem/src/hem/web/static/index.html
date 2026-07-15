@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HEM — Home Energy Manager</title>
+<script src="./static/apexcharts.min.js"></script>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f7f9; --card: #ffffff; --text: #1c1c1e; --muted: #6e6e73; --border: #e3e3e8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111113; --card: #1c1c1f; --text: #ececf0; --muted: #9a9aa2; --border: #2c2c30; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+  .tiles { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .tile { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+          padding: 10px 16px; min-width: 130px; }
+  .tile .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .tile .v { font-size: 20px; font-weight: 600; margin-top: 2px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+          padding: 12px; margin-bottom: 14px; }
+  .card h2 { font-size: 13px; margin: 0 0 4px; color: var(--muted); font-weight: 600; }
+  #error { color: #c0392b; padding: 24px; text-align: center; display: none; }
+  .action-charge { color: #2e86de; } .action-discharge { color: #10ac84; }
+  .action-idle { color: var(--muted); } .action-curtail { color: #e67e22; }
+</style>
+</head>
+<body>
+<h1>Home Energy Manager</h1>
+<div class="sub" id="meta">loading…</div>
+<div id="error"></div>
+<div class="tiles" id="tiles" style="display:none">
+  <div class="tile"><div class="k">Action now</div><div class="v" id="t-action">–</div></div>
+  <div class="tile"><div class="k">Battery setpoint</div><div class="v" id="t-power">–</div></div>
+  <div class="tile"><div class="k">SoC target</div><div class="v" id="t-soc">–</div></div>
+  <div class="tile"><div class="k">Horizon cost</div><div class="v" id="t-cost">–</div></div>
+</div>
+<div class="card"><h2>Prices $/kWh (buy / sell)</h2><div id="chart-prices"></div></div>
+<div class="card"><h2>Forecast kW (PV / load)</h2><div id="chart-power"></div></div>
+<div class="card"><h2>Planned battery power kW (+charge / −discharge) &amp; grid flows</h2><div id="chart-battery"></div></div>
+<div class="card"><h2>Planned state of charge kWh</h2><div id="chart-soc"></div></div>
+
+<script>
+const charts = {};
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+
+function base(id, extra) {
+  return Object.assign({
+    chart: { id, height: 220, type: "line", background: "transparent",
+             animations: { enabled: false }, toolbar: { show: false },
+             zoom: { enabled: false }, group: "hem" },
+    theme: { mode: dark ? "dark" : "light" },
+    xaxis: { type: "datetime", labels: { datetimeUTC: false } },
+    tooltip: { x: { format: "ddd HH:mm" } },
+    stroke: { width: 2, curve: "stepline" },
+    dataLabels: { enabled: false },
+    legend: { position: "top", horizontalAlign: "left" },
+    grid: { borderColor: dark ? "#2c2c30" : "#e3e3e8" },
+  }, extra || {});
+}
+
+function render(el, options) {
+  if (charts[el]) { charts[el].updateOptions(options, true, false); return; }
+  charts[el] = new ApexCharts(document.querySelector("#" + el), options);
+  charts[el].render();
+}
+
+async function refresh() {
+  let plan;
+  try {
+    const resp = await fetch("./api/plan", { cache: "no-store" });
+    if (!resp.ok) throw new Error((await resp.json()).error || resp.statusText);
+    plan = await resp.json();
+  } catch (e) {
+    document.querySelector("#error").textContent = "No plan yet: " + e.message;
+    document.querySelector("#error").style.display = "block";
+    return;
+  }
+  document.querySelector("#error").style.display = "none";
+  document.querySelector("#tiles").style.display = "flex";
+
+  const iv = plan.intervals;
+  const t = iv.map(x => new Date(x.start).getTime());
+  const pt = (vals) => vals.map((v, i) => [t[i], Math.round(v * 1000) / 1000]);
+  const step0 = iv[0];
+
+  const computed = new Date(plan.computed_at);
+  document.querySelector("#meta").textContent =
+    `computed ${computed.toLocaleString()} · ${plan.solver_status} · ${Math.round(plan.solve_ms)} ms · ${iv.length} intervals`;
+  const actionEl = document.querySelector("#t-action");
+  actionEl.textContent = step0.action;
+  actionEl.className = "v action-" + step0.action;
+  document.querySelector("#t-power").textContent = step0.power_kw.toFixed(2) + " kW";
+  document.querySelector("#t-soc").textContent = step0.soc_end.toFixed(1) + " kWh";
+  document.querySelector("#t-cost").textContent = "$" + plan.objective_cost.toFixed(2);
+
+  render("chart-prices", base("prices", {
+    series: [
+      { name: "buy", data: pt(iv.map(x => x.buy)) },
+      { name: "sell", data: pt(iv.map(x => x.sell)) },
+    ],
+    colors: ["#e74c3c", "#10ac84"],
+  }));
+  render("chart-power", base("power", {
+    series: [
+      { name: "PV", data: pt(iv.map(x => x.pv_kw)) },
+      { name: "load", data: pt(iv.map(x => x.load_kw)) },
+    ],
+    colors: ["#f39c12", "#8e8e93"],
+  }));
+  render("chart-battery", base("battery", {
+    chart: Object.assign(base("battery").chart, { type: "bar" }),
+    series: [
+      { name: "battery", data: pt(iv.map(x => x.power_kw)) },
+      { name: "import", data: pt(iv.map(x => x.grid_import_kw)) },
+      { name: "export", data: pt(iv.map(x => -x.grid_export_kw)) },
+    ],
+    colors: ["#2e86de", "#e74c3c", "#10ac84"],
+    plotOptions: { bar: { columnWidth: "80%" } },
+    stroke: { width: 0 },
+  }));
+  render("chart-soc", base("soc", {
+    series: [{ name: "SoC", data: pt(iv.map(x => x.soc_end)) }],
+    colors: ["#2e86de"],
+    stroke: { width: 2, curve: "smooth" },
+    fill: { type: "gradient", gradient: { opacityFrom: 0.25, opacityTo: 0.02 } },
+    chart: Object.assign(base("soc").chart, { type: "area" }),
+  }));
+}
+
+refresh();
+setInterval(refresh, 60_000);
+</script>
+</body>
+</html>

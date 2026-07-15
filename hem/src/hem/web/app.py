@@ -9,14 +9,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from hem import __version__
 from hem.models import Plan
 
 HEALTHY_WINDOW = timedelta(minutes=15)
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 @dataclass
@@ -91,17 +94,9 @@ def create_app(state: AppState) -> FastAPI:
         }
         return JSONResponse(body, status_code=200 if health.healthy else 503)
 
-    @app.get("/", response_class=HTMLResponse)
-    async def index() -> str:
-        status = "ok" if health.healthy else "degraded"
-        last = "never"
-        if health.last_success:
-            last = health.last_success.strftime("%Y-%m-%d %H:%M:%S UTC")
-        return f"""<!doctype html>
-<title>HEM</title>
-<h1>Home Energy Manager v{__version__}</h1>
-<p>Status: <strong>{status}</strong> — last successful cycle: {last}</p>
-<p>Plan charts arrive in a later phase.</p>
-"""
+    @app.get("/")
+    async def index() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")
 
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app
