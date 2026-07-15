@@ -144,14 +144,13 @@ async function refresh() {
     { name: "load", data: pt(iv.map(x => x.load_kw)) },
   ]);
 
-  const batteryColors = ["#2e86de", "#e74c3c", "#10ac84"];
+  // Stepline areas, not bars: grouped bars sit side-by-side (misaligned from
+  // their timestamps) and 5-min slots render as hairlines/blobs on a 36h axis.
   render("chart-battery", base("battery", {
-    chart: Object.assign(base("battery").chart, { type: "bar" }),
-    colors: batteryColors,
-    plotOptions: { bar: { columnWidth: "100%" } },
-    // bars sized to the smallest (5-min) slot are hairlines over a 36h axis;
-    // a matching-color stroke fattens them enough to read
-    stroke: { width: 3, colors: batteryColors },
+    chart: Object.assign(base("battery").chart, { type: "area" }),
+    colors: ["#2e86de", "#e74c3c", "#10ac84"],
+    stroke: { width: 2, curve: "stepline" },
+    fill: { type: "solid", opacity: [0.35, 0.2, 0.2] },
   }), [
     { name: "battery", data: pt(iv.map(x => x.power_kw)) },
     { name: "import", data: pt(iv.map(x => x.grid_import_kw)) },
