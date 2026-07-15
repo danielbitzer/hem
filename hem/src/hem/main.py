@@ -15,6 +15,7 @@ import time
 from datetime import UTC, datetime
 
 import uvicorn
+from dotenv import load_dotenv
 
 from hem import __version__
 from hem.adapters.amber import AmberExpressAdapter
@@ -119,6 +120,7 @@ async def cycle(
 
 
 async def run() -> None:
+    load_dotenv()  # dev convenience: hem/.env with HEM_HA_URL/HEM_HA_TOKEN/HEM_OPTIONS_FILE
     settings = load_settings()
     logging.basicConfig(
         level=settings.log_level.upper(),

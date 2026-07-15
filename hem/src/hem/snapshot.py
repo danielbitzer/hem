@@ -10,6 +10,8 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+from dotenv import load_dotenv
+
 from hem.adapters.amber import AmberExpressAdapter
 from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
@@ -21,6 +23,7 @@ from hem.timegrid import TimeGrid, coverage, resample_mean, resample_previous
 
 
 async def main() -> None:
+    load_dotenv()
     settings = load_settings()
     conn = resolve_connection()
     tz = default_timezone()
