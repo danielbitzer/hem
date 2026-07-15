@@ -1,0 +1,65 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - "hem/**"
+      - ".github/workflows/build.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hem
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Test
+        run: uv run pytest
+
+  build:
+    name: Build ${{ matrix.arch }}
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        arch: [aarch64, amd64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # PRs build only (--test); pushes to main publish :<version> and :latest
+      # to ghcr.io. Users get the update when the version in config.yaml bumps.
+      - name: Build ${{ matrix.arch }} add-on
+        uses: home-assistant/builder@2025.03.0
+        with:
+          args: |
+            ${{ github.event_name == 'pull_request' && '--test' || '' }} \
+            --${{ matrix.arch }} \
+            --target /data/hem \
+            --image "hem-{arch}" \
+            --docker-hub "ghcr.io/${{ github.repository_owner }}" \
+            --addon
