@@ -10,22 +10,20 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 
-from dotenv import load_dotenv
-
 from hem.adapters.amber import AmberExpressAdapter
 from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
 from hem.adapters.weather import WeatherAdapter, WeatherParseError
-from hem.config import load_settings, resolve_connection
+from hem.config import EnvSettings, load_settings, resolve_connection
 from hem.forecast.load import BaselineLoadForecaster, default_timezone
 from hem.ha.client import HaClient
 from hem.timegrid import TimeGrid, coverage, resample_mean, resample_previous
 
 
 async def main() -> None:
-    load_dotenv()
-    settings = load_settings()
-    conn = resolve_connection()
+    env = EnvSettings()
+    settings = load_settings(env.options_file)
+    conn = resolve_connection(env)
     tz = default_timezone()
     now = datetime.now(UTC)
 

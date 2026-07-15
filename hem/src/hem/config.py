@@ -2,10 +2,11 @@
 
 Two sources, resolved independently:
 
-- HA connection: supervisor proxy when SUPERVISOR_TOKEN is present (add-on),
-  otherwise HEM_HA_URL + HEM_HA_TOKEN (standalone/dev).
-- Options: /data/options.json (Supervisor-rendered add-on options), overridable
-  with HEM_OPTIONS_FILE for standalone/dev.
+- Environment (EnvSettings, pydantic-settings): HEM_* env vars and hem/.env.
+  Under the Supervisor, SUPERVISOR_TOKEN wins and the proxy URLs are used;
+  standalone needs HEM_HA_URL + HEM_HA_TOKEN.
+- Options: /data/options.json (Supervisor-rendered add-on options), or
+  HEM_OPTIONS_FILE standalone.
 """
 
 from __future__ import annotations
@@ -17,8 +18,22 @@ from pathlib import Path
 from typing import Literal, Self
 
 from pydantic import BaseModel, Field, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_OPTIONS_FILE = "/data/options.json"
+
+
+class EnvSettings(BaseSettings):
+    """HEM_* environment variables, also read from ./.env in dev."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="HEM_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    ha_url: str = ""  # HEM_HA_URL, standalone only
+    ha_token: str = ""  # HEM_HA_TOKEN, standalone only
+    options_file: Path | None = None  # HEM_OPTIONS_FILE
+    data_dir: Path | None = None  # HEM_DATA_DIR (history/recordings)
 
 
 @dataclass(frozen=True)
@@ -28,29 +43,37 @@ class HaConnection:
     token: str
 
 
-def resolve_connection(env: dict[str, str] | None = None) -> HaConnection:
-    env = env if env is not None else dict(os.environ)
-    if token := env.get("SUPERVISOR_TOKEN"):
+def _supervisor_token(explicit: str | None) -> str:
+    return explicit if explicit is not None else os.environ.get("SUPERVISOR_TOKEN", "")
+
+
+def resolve_connection(env: EnvSettings, supervisor_token: str | None = None) -> HaConnection:
+    if token := _supervisor_token(supervisor_token):
         return HaConnection(
             rest_url="http://supervisor/core/api",
             ws_url="ws://supervisor/core/websocket",
             token=token,
         )
-    try:
-        url = env["HEM_HA_URL"].rstrip("/")
-        token = env["HEM_HA_TOKEN"]
-    except KeyError as e:
+    if not env.ha_url or not env.ha_token:
         raise RuntimeError(
             "Not running under the Supervisor and standalone connection is not "
-            f"configured: missing {e.args[0]}. Set HEM_HA_URL and HEM_HA_TOKEN."
-        ) from None
+            "configured. Set HEM_HA_URL and HEM_HA_TOKEN (env or hem/.env)."
+        )
+    url = env.ha_url.rstrip("/")
     ws_scheme = "wss" if url.startswith("https") else "ws"
     host = url.split("://", 1)[1]
     return HaConnection(
         rest_url=f"{url}/api",
         ws_url=f"{ws_scheme}://{host}/api/websocket",
-        token=token,
+        token=env.ha_token,
     )
+
+
+def resolve_data_dir(env: EnvSettings, supervisor_token: str | None = None) -> Path:
+    """/data under the Supervisor (persistent add-on storage); ./data standalone."""
+    if env.data_dir:
+        return env.data_dir
+    return Path("/data") if _supervisor_token(supervisor_token) else Path("data")
 
 
 class Entities(BaseModel):
@@ -165,7 +188,7 @@ class Settings(BaseModel):
 
 
 def load_settings(path: str | Path | None = None) -> Settings:
-    path = Path(path or os.environ.get("HEM_OPTIONS_FILE", DEFAULT_OPTIONS_FILE))
+    path = Path(path) if path else Path(DEFAULT_OPTIONS_FILE)
     try:
         raw = json.loads(path.read_text())
     except FileNotFoundError:

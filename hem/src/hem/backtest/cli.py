@@ -13,7 +13,7 @@ from pathlib import Path
 
 from hem.backtest.policies import HemPolicy, NoBatteryPolicy, SelfConsumptionPolicy
 from hem.backtest.sim import CycleRecord, SimResult, simulate
-from hem.config import load_settings
+from hem.config import EnvSettings, load_settings
 from hem.optimizer.model import GridParams
 from hem.planner import battery_params
 from hem.recorder import Recorder
@@ -33,7 +33,7 @@ def main() -> None:
     parser.add_argument("--soc0", type=float, default=0.5, help="starting SoC fraction")
     args = parser.parse_args()
 
-    settings = load_settings(args.options)
+    settings = load_settings(args.options or EnvSettings().options_file)
     battery = battery_params(settings)
     grid = GridParams(
         import_limit_kw=settings.grid.import_limit_kw,

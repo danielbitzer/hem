@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from hem.config import load_settings, resolve_connection
+from hem.config import EnvSettings, load_settings, resolve_connection, resolve_data_dir
 
 MINIMAL_OPTIONS = {
     "entities": {
@@ -66,26 +66,47 @@ def test_missing_options_file_message(tmp_path: Path):
         load_settings(tmp_path / "nope.json")
 
 
+def env_settings(**kwargs) -> EnvSettings:
+    return EnvSettings(_env_file=None, **kwargs)  # hermetic: ignore any real .env
+
+
 def test_connection_supervisor():
-    conn = resolve_connection({"SUPERVISOR_TOKEN": "tok"})
+    conn = resolve_connection(env_settings(), supervisor_token="tok")
     assert conn.rest_url == "http://supervisor/core/api"
     assert conn.ws_url == "ws://supervisor/core/websocket"
     assert conn.token == "tok"
 
 
 def test_connection_standalone():
-    conn = resolve_connection(
-        {"HEM_HA_URL": "http://homeassistant.local:8123/", "HEM_HA_TOKEN": "tok"}
-    )
+    env = env_settings(ha_url="http://homeassistant.local:8123/", ha_token="tok")
+    conn = resolve_connection(env, supervisor_token="")
     assert conn.rest_url == "http://homeassistant.local:8123/api"
     assert conn.ws_url == "ws://homeassistant.local:8123/api/websocket"
 
 
 def test_connection_standalone_https():
-    conn = resolve_connection({"HEM_HA_URL": "https://ha.example.com", "HEM_HA_TOKEN": "tok"})
+    env = env_settings(ha_url="https://ha.example.com", ha_token="tok")
+    conn = resolve_connection(env, supervisor_token="")
     assert conn.ws_url == "wss://ha.example.com/api/websocket"
 
 
 def test_connection_unconfigured():
     with pytest.raises(RuntimeError, match="HEM_HA_URL"):
-        resolve_connection({})
+        resolve_connection(env_settings(), supervisor_token="")
+
+
+def test_data_dir_resolution(tmp_path: Path):
+    assert resolve_data_dir(env_settings(), supervisor_token="tok") == Path("/data")
+    assert resolve_data_dir(env_settings(), supervisor_token="") == Path("data")
+    custom = env_settings(data_dir=tmp_path)
+    assert resolve_data_dir(custom, supervisor_token="") == tmp_path
+
+
+def test_env_settings_reads_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    (tmp_path / ".env").write_text(
+        "HEM_HA_URL=http://ha.local:8123\nHEM_HA_TOKEN=tok\nHEM_OPTIONS_FILE=./dev-options.json\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    env = EnvSettings()
+    assert env.ha_url == "http://ha.local:8123"
+    assert env.options_file == Path("./dev-options.json")

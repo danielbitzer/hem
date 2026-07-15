@@ -15,14 +15,13 @@ import time
 from datetime import UTC, datetime
 
 import uvicorn
-from dotenv import load_dotenv
 
 from hem import __version__
 from hem.adapters.amber import AmberExpressAdapter
 from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
 from hem.adapters.weather import WeatherAdapter
-from hem.config import Settings, load_settings, resolve_connection
+from hem.config import EnvSettings, Settings, load_settings, resolve_connection, resolve_data_dir
 from hem.executor import DryRunExecutor, Executor, SungrowExecutor
 from hem.forecast.load import default_timezone
 from hem.ha.client import HaClient
@@ -44,6 +43,14 @@ WS_RECONNECT_BACKOFF_S = 30
 def seconds_to_next_boundary(now_epoch: float, period: int = CYCLE_SECONDS) -> float:
     """Seconds until the next wall-clock multiple of `period` (min 1s)."""
     return max(1.0, period - (now_epoch % period))
+
+
+def _record(recorder: Recorder, kind: str, data: dict, ts: datetime) -> None:
+    """History recording is auxiliary — it must never block planning."""
+    try:
+        recorder.record(kind, data, ts=ts)
+    except OSError as e:
+        log.warning("could not record %s history (%s)", kind, e)
 
 
 class PriceWatcher:
@@ -89,11 +96,12 @@ async def cycle(
 ) -> Plan:
     now = datetime.now(UTC)
     data = await planner.gather(now)
-    recorder.record("inputs", cycle_inputs_to_json(data), ts=now)
+    _record(recorder, "inputs", cycle_inputs_to_json(data), now)
     plan = planner.optimize(data, now)
     planner.previous_plan = plan
     step0 = plan.intervals[0]
-    recorder.record(
+    _record(
+        recorder,
         "plan",
         {
             "action": step0.action.value,
@@ -102,7 +110,7 @@ async def cycle(
             "solver_status": plan.solver_status,
             "solve_ms": plan.solve_ms,
         },
-        ts=now,
+        now,
     )
     await publisher.publish_plan(plan, settings.battery.capacity_kwh)
     await publisher.publish_status("ok", last_solve=now, solve_ms=plan.solve_ms)
@@ -120,13 +128,13 @@ async def cycle(
 
 
 async def run() -> None:
-    load_dotenv()  # dev convenience: hem/.env with HEM_HA_URL/HEM_HA_TOKEN/HEM_OPTIONS_FILE
-    settings = load_settings()
+    env = EnvSettings()  # HEM_* env vars, plus ./.env in dev
+    settings = load_settings(env.options_file)
     logging.basicConfig(
         level=settings.log_level.upper(),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    conn = resolve_connection()
+    conn = resolve_connection(env)
     log.info(
         "HEM v%s starting (mode=%s, api=%s)", __version__, settings.control.mode, conn.rest_url
     )
@@ -143,7 +151,7 @@ async def run() -> None:
     web_server = uvicorn.Server(web_config)
     web_task = asyncio.create_task(web_server.serve())
 
-    recorder = Recorder()
+    recorder = Recorder(resolve_data_dir(env) / "history")
     try:
         async with HaClient(conn) as client:
             if not await client.api_ok():
