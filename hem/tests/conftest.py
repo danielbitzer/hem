@@ -43,6 +43,11 @@ class FakeHa:
         self.posted: list[tuple[str, dict]] = []
         self.service_calls: list[tuple[str, str, dict]] = []
         self.service_responses: dict[tuple[str, str], dict] = {}
+        # fault injection: entity_id -> HTTP status for GET /states/<id>
+        self.state_errors: dict[str, int] = {}
+        # fault injection: called with (domain, service, data), return an HTTP
+        # status to fail that call, or None to succeed
+        self.service_fault: object = None
         self.app = web.Application()
         self.app.router.add_get("/api/", self._root)
         self.app.router.add_get("/api/states/{entity_id}", self._get_state)
@@ -59,6 +64,8 @@ class FakeHa:
 
     async def _get_state(self, request: web.Request) -> web.Response:
         entity_id = request.match_info["entity_id"]
+        if entity_id in self.state_errors:
+            return web.json_response({"message": "injected"}, status=self.state_errors[entity_id])
         if entity_id not in self.states:
             return web.json_response({"message": "not found"}, status=404)
         return web.json_response(self.states[entity_id])
@@ -70,7 +77,12 @@ class FakeHa:
 
     async def _call_service(self, request: web.Request) -> web.Response:
         domain, service = request.match_info["domain"], request.match_info["service"]
-        self.service_calls.append((domain, service, await request.json()))
+        data = await request.json()
+        self.service_calls.append((domain, service, data))
+        if self.service_fault:
+            status = self.service_fault(domain, service, data)  # type: ignore[operator]
+            if status:
+                return web.json_response({"message": "injected"}, status=status)
         if "return_response" in request.query_string:
             response = self.service_responses.get((domain, service), {})
             return web.json_response({"changed_states": [], "service_response": response})

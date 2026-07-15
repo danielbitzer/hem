@@ -1,5 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
+import aiohttp
+import pytest
 from conftest import FakeHa, fake_ha_client
 
 from hem.config import Settings
@@ -64,18 +66,19 @@ async def test_dry_run_never_calls_services():
     assert fake.service_calls == []
 
 
-async def test_discharge_writes_forced_mode_and_power():
+async def test_discharge_writes_registers_first_forced_mode_last():
+    """Power and command registers are written BEFORE engaging Forced mode, so
+    a mid-sequence failure can't leave Forced mode with stale registers."""
     fake = FakeHa()
     add_override(fake, "off")
     async with fake_ha_client(fake) as client:
         ex = SungrowExecutor(client, SETTINGS)
         await ex.apply(plan_with(Action.DISCHARGE, -3.2))
     calls = fake.service_calls
-    assert ("select", "select_option") == calls[0][:2]
-    assert calls[0][2]["option"] == "Forced mode"
+    assert calls[0][:2] == ("number", "set_value")
+    assert calls[0][2]["value"] == 3200  # kW -> W, absolute
     assert calls[1][2]["option"] == "Forced discharge"
-    assert calls[2][:2] == ("number", "set_value")
-    assert calls[2][2]["value"] == 3200  # kW -> W, absolute
+    assert calls[2][2]["option"] == "Forced mode"  # engaged last
 
 
 async def test_idle_reverts_to_self_consumption():
@@ -108,6 +111,51 @@ async def test_override_halts_writes():
     assert fake.service_calls == []
 
 
+async def test_override_read_failure_fails_closed():
+    """A transient error reading the override helper must BLOCK writes, not
+    proceed as if the override were off. (Missing helper = no override.)"""
+    fake = FakeHa()
+    fake.state_errors["input_boolean.hem_override"] = 500
+    async with fake_ha_client(fake) as client:
+        ex = SungrowExecutor(client, SETTINGS)
+        await ex.apply(plan_with(Action.DISCHARGE, -5.0))
+    assert fake.service_calls == []  # failed closed
+
+
+async def test_missing_override_helper_fails_open():
+    fake = FakeHa()  # no override entity at all -> 404 -> not configured
+    async with fake_ha_client(fake) as client:
+        ex = SungrowExecutor(client, SETTINGS)
+        await ex.apply(plan_with(Action.CHARGE, 3.0))
+    assert len(fake.service_calls) == 3  # writes proceeded
+
+
+async def test_failed_sequence_reverts_and_does_not_consume_budget():
+    """select failure mid-sequence -> best-effort revert to self-consumption,
+    and the failed attempt doesn't count against the rate limit."""
+    fake = FakeHa()
+    add_override(fake, "off")
+    failed_once = []
+
+    def fail_first_select(domain, service, data):
+        if domain == "select" and not failed_once:
+            failed_once.append(True)
+            return 500
+        return None
+
+    fake.service_fault = fail_first_select
+    async with fake_ha_client(fake) as client:
+        ex = SungrowExecutor(client, SETTINGS)
+        with pytest.raises(aiohttp.ClientResponseError):
+            await ex.apply(plan_with(Action.DISCHARGE, -5.0))
+        # revert attempted after the failure
+        options = [c[2].get("option") for c in fake.service_calls if c[0] == "select"]
+        assert "Self-consumption mode (default)" in options
+        # budget untouched: a follow-up write is still allowed and succeeds
+        await ex.apply(plan_with(Action.DISCHARGE, -4.0))
+    assert ex._limiter.check()
+
+
 async def test_power_clamped_to_limits():
     fake = FakeHa()
     add_override(fake, "off")
@@ -129,7 +177,9 @@ async def test_shutdown_reverts_mode():
 def test_rate_limiter_window():
     limiter = WriteRateLimiter(max_per_hour=2)
     t0 = NOW
-    assert limiter.allow(t0)
-    assert limiter.allow(t0 + timedelta(minutes=1))
-    assert not limiter.allow(t0 + timedelta(minutes=2))  # limit hit
-    assert limiter.allow(t0 + timedelta(minutes=62))  # window rolled
+    assert limiter.check(t0)
+    limiter.record(t0)
+    assert limiter.check(t0 + timedelta(minutes=1))
+    limiter.record(t0 + timedelta(minutes=1))
+    assert not limiter.check(t0 + timedelta(minutes=2))  # limit hit
+    assert limiter.check(t0 + timedelta(minutes=62))  # window rolled

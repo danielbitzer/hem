@@ -6,12 +6,19 @@
 # add-on dying. Import via Settings -> Automations -> Blueprints, or copy
 # into config/blueprints/automation/hem/.
 #
-# Adjust the two entity IDs / option string to match your Sungrow package.
+# Detection is by HEARTBEAT AGE, not state transitions: sensor.hem_status is
+# REST-pushed, so a dead add-on leaves it frozen at "ok" (it never becomes
+# "unavailable"), and after an HA restart the entity does not exist at all.
+# Both cases make the heartbeat timestamp stale or missing, which is what the
+# template below checks every 5 minutes.
+#
+# Adjust the entity IDs / option string to match your Sungrow package.
 blueprint:
   name: HEM watchdog — revert inverter to self-consumption
   description: >-
     Reverts the Sungrow EMS mode to self-consumption when the HEM add-on's
-    status sensor is stale or unavailable for more than 10 minutes.
+    heartbeat is stale or missing for more than the configured age. Fires at
+    most once per stale episode (the EMS select only changes when needed).
   domain: automation
   input:
     hem_status:
@@ -20,6 +27,14 @@ blueprint:
         entity:
           domain: sensor
       default: sensor.hem_status
+    max_heartbeat_age_minutes:
+      name: Maximum heartbeat age (minutes)
+      selector:
+        number:
+          min: 5
+          max: 60
+          unit_of_measurement: min
+      default: 10
     ems_mode_select:
       name: EMS mode select entity
       selector:
@@ -33,18 +48,24 @@ blueprint:
       default: "Self-consumption mode (default)"
 
 triggers:
-  - trigger: state
-    entity_id: !input hem_status
-    to:
-      - unavailable
-      - unknown
-    for:
-      minutes: 10
-  - trigger: state
-    entity_id: !input hem_status
-    to: degraded
-    for:
-      minutes: 10
+  - trigger: time_pattern
+    minutes: "/5"
+
+conditions:
+  # Stale or missing heartbeat: entity absent (HA restarted while HEM down),
+  # unavailable, no heartbeat attribute, or heartbeat older than the limit.
+  - condition: template
+    value_template: >-
+      {% set s = states(hem_status) %}
+      {% set hb = state_attr(hem_status, 'heartbeat') %}
+      {{ s in ('unknown', 'unavailable')
+         or hb is none
+         or (now() - (hb | as_datetime)) > timedelta(minutes=max_heartbeat_age_minutes | int) }}
+  # Only act when the inverter is NOT already in self-consumption, so the
+  # automation is idempotent and doesn't spam while HEM is legitimately off.
+  - condition: template
+    value_template: >-
+      {{ states(ems_mode_select) != self_consumption_option }}
 
 actions:
   - action: select.select_option
@@ -56,7 +77,13 @@ actions:
     data:
       title: HEM watchdog fired
       message: >-
-        HEM's heartbeat went stale — the inverter was reverted to
+        HEM's heartbeat is stale or missing — the inverter was reverted to
         self-consumption mode. Check the HEM add-on.
+
+variables:
+  hem_status: !input hem_status
+  max_heartbeat_age_minutes: !input max_heartbeat_age_minutes
+  ems_mode_select: !input ems_mode_select
+  self_consumption_option: !input self_consumption_option
 
 mode: single

@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import signal
 import time
 from datetime import UTC, datetime
 
@@ -46,10 +47,11 @@ def seconds_to_next_boundary(now_epoch: float, period: int = CYCLE_SECONDS) -> f
     return max(1.0, period - (now_epoch % period))
 
 
-def _record(recorder: Recorder, kind: str, data: dict, ts: datetime) -> None:
-    """History recording is auxiliary — it must never block planning."""
+async def _record(recorder: Recorder, kind: str, data: dict, ts: datetime) -> None:
+    """History recording is auxiliary — it must never block planning, nor the
+    event loop (file I/O on slow SD cards/overlayfs runs in a thread)."""
     try:
-        recorder.record(kind, data, ts=ts)
+        await asyncio.to_thread(recorder.record, kind, data, ts)
     except OSError as e:
         log.warning("could not record %s history (%s)", kind, e)
 
@@ -97,11 +99,31 @@ async def cycle(
 ) -> Plan:
     now = datetime.now(UTC)
     data = await planner.gather(now)
-    _record(recorder, "inputs", cycle_inputs_to_json(data), now)
-    plan = planner.optimize(data, now)
+    # The solve is synchronous CVXPY/HiGHS — run off the event loop so /health,
+    # the WS watcher, and the dashboard stay responsive during long solves.
+    plan = await asyncio.to_thread(planner.optimize, data, now)
     planner.previous_plan = plan
     step0 = plan.intervals[0]
-    _record(
+
+    # Control comes FIRST: a failed cosmetic sensor write must never delay
+    # applying a freshly computed plan to the inverter.
+    await executor.apply(plan)
+    app_state.plan = plan
+
+    forecast_end = data.price_forecast_end.isoformat() if data.price_forecast_end else None
+    try:
+        await publisher.publish_plan(plan, settings.battery.capacity_kwh)
+        await publisher.publish_status(
+            "ok",
+            last_solve=now,
+            solve_ms=plan.solve_ms,
+            extra={"coverage": data.coverage, "price_forecast_end": forecast_end},
+        )
+    except Exception as e:  # noqa: BLE001 - publishing is cosmetic
+        log.warning("sensor publishing failed (%s); plan was still applied", e)
+
+    await _record(recorder, "inputs", cycle_inputs_to_json(data), now)
+    await _record(
         recorder,
         "plan",
         {
@@ -113,16 +135,6 @@ async def cycle(
         },
         now,
     )
-    await publisher.publish_plan(plan, settings.battery.capacity_kwh)
-    forecast_end = data.price_forecast_end.isoformat() if data.price_forecast_end else None
-    await publisher.publish_status(
-        "ok",
-        last_solve=now,
-        solve_ms=plan.solve_ms,
-        extra={"coverage": data.coverage, "price_forecast_end": forecast_end},
-    )
-    await executor.apply(plan)
-    app_state.plan = plan
     app_state.meta = {
         "capacity_kwh": settings.battery.capacity_kwh,
         "price_forecast_end": forecast_end,
@@ -162,11 +174,18 @@ async def run() -> None:
         log.info("dashboard: http://localhost:%d", WEB_PORT)
 
     app_state = AppState()
-    web_config = uvicorn.Config(
-        create_app(app_state), host="0.0.0.0", port=WEB_PORT, log_level="warning"
-    )
-    web_server = uvicorn.Server(web_config)
-    web_task = asyncio.create_task(web_server.serve())
+    web_task = asyncio.create_task(_serve_web(app_state))
+
+    # uvicorn's serve() captures SIGTERM/SIGINT and RE-RAISES them with default
+    # handlers after its graceful stop — killing the process before our finally
+    # blocks (inverter revert!) can run. Own handlers, installed after the web
+    # task starts, win: they cancel this task so cleanup executes.
+    loop = asyncio.get_running_loop()
+    main_task = asyncio.current_task()
+    assert main_task is not None
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        with contextlib.suppress(NotImplementedError, RuntimeError):
+            loop.add_signal_handler(sig, main_task.cancel)
 
     recorder = Recorder(resolve_data_dir(env) / "history")
     try:
@@ -210,16 +229,42 @@ async def run() -> None:
                             await publisher.publish_status("degraded", detail=str(e))
 
                     delay = seconds_to_next_boundary(time.time())
-                    with contextlib.suppress(TimeoutError):
+                    try:
                         async with asyncio.timeout(delay):
                             await watcher.trigger.wait()
+                            # trigger observed: clear BEFORE the debounce so a
+                            # boundary timeout during the sleep can't leave the
+                            # event set and cause a spurious extra re-solve
+                            watcher.trigger.clear()
                             await asyncio.sleep(EVENT_DEBOUNCE_S)  # coalesce bursts
+                    except TimeoutError:
                         watcher.trigger.clear()
             finally:
                 watcher_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await watcher_task
-                await executor.shutdown()
+                # Last action while the HA client is still open: leave the
+                # inverter in self-consumption on any exit path.
+                await asyncio.shield(executor.shutdown())
+    except asyncio.CancelledError:
+        log.info("shutting down (signal received)")
     finally:
-        web_server.should_exit = True
-        await web_task
+        web_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await web_task
+
+
+async def _serve_web(app_state: AppState) -> None:
+    """Run the dashboard; planning must survive its failure (e.g. port bound —
+    uvicorn raises SystemExit(3) inside the task)."""
+    server = uvicorn.Server(
+        uvicorn.Config(create_app(app_state), host="0.0.0.0", port=WEB_PORT, log_level="warning")
+    )
+    try:
+        await server.serve()
+        log.warning("web server exited; dashboard/health unavailable")
+    except asyncio.CancelledError:
+        server.should_exit = True
+        raise
+    except (SystemExit, Exception) as e:  # noqa: BLE001 - dashboard is not load-bearing
+        log.error("web server failed (%s); continuing without dashboard/health", e)

@@ -10,16 +10,21 @@ SungrowExecutor guardrails (all of these hold regardless of what the plan says):
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections import deque
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from hem.config import Settings
-from hem.ha.client import HaClient
+from hem.ha.client import EntityNotFoundError, HaClient
 from hem.models import Action, Plan
 
 log = logging.getLogger(__name__)
+
+
+class OverrideUnknown(Exception):
+    """Raised when the override helper's state cannot be determined."""
 
 
 class Executor(Protocol):
@@ -42,15 +47,17 @@ class WriteRateLimiter:
         self._max = max_per_hour
         self._writes: deque[datetime] = deque()
 
-    def allow(self, now: datetime | None = None) -> bool:
+    def check(self, now: datetime | None = None) -> bool:
         now = now or datetime.now(UTC)
         cutoff = now - timedelta(hours=1)
         while self._writes and self._writes[0] < cutoff:
             self._writes.popleft()
-        if len(self._writes) >= self._max:
-            return False
-        self._writes.append(now)
-        return True
+        return len(self._writes) < self._max
+
+    def record(self, now: datetime | None = None) -> None:
+        """Count a SUCCESSFUL write sequence — failed attempts don't consume
+        the budget, so retries after transient errors aren't starved."""
+        self._writes.append(now or datetime.now(UTC))
 
 
 class SungrowExecutor:
@@ -62,10 +69,16 @@ class SungrowExecutor:
         self._last_applied: tuple[Action, float] | None = None
 
     async def _override_active(self) -> bool:
+        """The user's kill-switch must FAIL CLOSED: only a genuinely missing
+        helper means 'no override configured'. Any other error (timeout, HA
+        restarting) blocks writes — a flaky GET doesn't imply the POSTs are
+        safe, and the user may believe the override is holding us off."""
         try:
             state = await self._client.get_state(self._ctl.override_boolean)
-        except Exception:  # noqa: BLE001 - missing helper -> no override configured
+        except EntityNotFoundError:
             return False
+        except Exception as e:  # noqa: BLE001
+            raise OverrideUnknown(f"could not read {self._ctl.override_boolean}: {e}") from e
         return state.state == "on"
 
     async def apply(self, plan: Plan) -> None:
@@ -76,10 +89,14 @@ class SungrowExecutor:
 
         if desired == self._last_applied:
             return
-        if await self._override_active():
-            log.warning("override boolean is on: skipping inverter write")
+        try:
+            if await self._override_active():
+                log.warning("override boolean is on: skipping inverter write")
+                return
+        except OverrideUnknown as e:
+            log.warning("override state unknown (%s): failing closed, no write", e)
             return
-        if not self._limiter.allow():
+        if not self._limiter.check():
             log.warning(
                 "write rate limit reached (%d/h): holding previous inverter state",
                 self._settings.control.max_writes_per_hour,
@@ -87,24 +104,37 @@ class SungrowExecutor:
             return
 
         log.info("inverter write: %s %.2f kW", action.value, power_kw)
-        if action in (Action.IDLE, Action.CURTAIL):
-            await self._set_self_consumption()
-        else:
-            await self._select(self._ctl.ems_mode_select, self._ctl.ems_forced_option)
-            cmd = (
-                self._ctl.forced_charge_option
-                if action == Action.CHARGE
-                else self._ctl.forced_discharge_option
-            )
-            await self._select(self._ctl.forced_cmd_select, cmd)
-            await self._client.call_service(
-                "number",
-                "set_value",
-                {
-                    "entity_id": self._ctl.forced_power_number,
-                    "value": round(abs(power_kw) * 1000),  # mkaiser power number is W
-                },
-            )
+        try:
+            if action in (Action.IDLE, Action.CURTAIL):
+                await self._set_self_consumption()
+            else:
+                # Order matters: set power and command REGISTERS first, engage
+                # Forced mode LAST — a mid-sequence failure then leaves the
+                # inverter still in its previous (safe) mode instead of Forced
+                # mode with stale register values.
+                await self._client.call_service(
+                    "number",
+                    "set_value",
+                    {
+                        "entity_id": self._ctl.forced_power_number,
+                        "value": round(abs(power_kw) * 1000),  # mkaiser power number is W
+                    },
+                )
+                cmd = (
+                    self._ctl.forced_charge_option
+                    if action == Action.CHARGE
+                    else self._ctl.forced_discharge_option
+                )
+                await self._select(self._ctl.forced_cmd_select, cmd)
+                await self._select(self._ctl.ems_mode_select, self._ctl.ems_forced_option)
+        except Exception:
+            # Best-effort local revert; does NOT consume rate budget (reverting
+            # to safe must never be starved by the limiter).
+            log.exception("inverter write sequence failed; attempting safe revert")
+            with contextlib.suppress(Exception):
+                await self._set_self_consumption()
+            raise
+        self._limiter.record()
         self._last_applied = desired
 
     def _clamp_power(self, action: Action, power_kw: float, live_spike: bool) -> float:
