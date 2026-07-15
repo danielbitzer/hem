@@ -103,7 +103,14 @@ class Planner:
         if prices.updated_at and now - prices.updated_at > MAX_PRICE_AGE:
             raise InputsStale(f"prices last updated {prices.updated_at.isoformat()}")
         if now - battery.ts > MAX_SOC_AGE:
-            raise InputsStale(f"battery state last updated {battery.ts.isoformat()}")
+            # Not fatal: the mkaiser package's battery sensors only report on
+            # value CHANGE, so an idle battery at constant SoC looks "stale"
+            # while being perfectly live. Unavailability is what the adapter
+            # treats as fatal; age is just worth a note.
+            log.info(
+                "battery sensors last reported %s (only report on change; using as-is)",
+                battery.ts.isoformat(),
+            )
 
         horizon = timedelta(hours=self._settings.optimizer.horizon_hours)
         grid = TimeGrid.build(now, sorted({*prices.buy.times, *prices.sell.times}), horizon)

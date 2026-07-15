@@ -121,15 +121,27 @@ async def test_full_cycle_against_fixtures():
     assert any(iv.action == Action.DISCHARGE for iv in plan.intervals)
 
 
-async def test_stale_battery_raises():
+async def test_old_battery_report_is_tolerated():
+    """mkaiser battery sensors only report on value change, so an old
+    last_reported must NOT abort the cycle (idle battery == constant SoC).
+    Unavailable battery sensors are still fatal (adapter raises)."""
     settings = make_settings()
     fake = full_fake_ha()
-    # Prices fresh (11:35), battery last updated 25 min before NOW -> stale
-    add_battery_states(fake, ts="2026-07-15T11:11:00+00:00")
+    add_battery_states(fake, ts="2026-07-15T09:00:00+00:00")  # 2.5h old
     async with fake_ha_client(fake) as client:
         planner = make_planner(client, settings)
-        with pytest.raises(InputsStale, match="battery"):
-            await planner.gather(NOW)
+        data = await planner.gather(NOW)
+    assert data.battery.soc_frac == pytest.approx(0.725)
+
+
+async def test_stale_prices_still_fatal():
+    settings = make_settings()
+    fake = full_fake_ha()
+    async with fake_ha_client(fake) as client:
+        planner = make_planner(client, settings)
+        late = NOW + timedelta(hours=2)  # price sensors reported 11:35
+        with pytest.raises(InputsStale, match="prices"):
+            await planner.gather(late)
 
 
 async def test_unchanged_but_reported_battery_is_fresh():
