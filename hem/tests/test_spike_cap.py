@@ -4,13 +4,8 @@ from datetime import UTC, datetime
 
 import numpy as np
 import pytest
-from conftest import FakeHa, fake_ha_client
-from test_executor import SETTINGS as EXEC_SETTINGS
-from test_executor import add_override, plan_with
 from test_planner import make_settings, offline_planner, synthetic_cycle_data
 
-from hem.executor import SungrowExecutor
-from hem.models import Action
 from hem.optimizer.model import (
     BatteryParams,
     GridParams,
@@ -84,27 +79,3 @@ def test_plan_carries_live_spike_flag():
     data = synthetic_cycle_data(settings, live_spike=True)
     plan = planner.optimize(data, datetime(2026, 7, 15, 11, 36, 30, tzinfo=UTC))
     assert plan.live_spike is True
-
-
-async def test_executor_clamp_respects_spike_cap():
-    settings = EXEC_SETTINGS.model_copy(deep=True)
-    settings.battery.max_discharge_kw = 12.0
-    settings.spike.discharge_kw = 15.0
-    fake = FakeHa()
-    add_override(fake, "off")
-
-    plan = plan_with(Action.DISCHARGE, -15.0)
-    plan.live_spike = True
-    async with fake_ha_client(fake) as client:
-        await SungrowExecutor(client, settings).apply(plan)
-    number_call = next(c for c in fake.service_calls if c[0] == "number")
-    assert number_call[2]["value"] == 15000  # spike cap honored
-
-    # Same request without a live spike clamps to the everyday limit
-    fake2 = FakeHa()
-    add_override(fake2, "off")
-    plan2 = plan_with(Action.DISCHARGE, -15.0)
-    async with fake_ha_client(fake2) as client:
-        await SungrowExecutor(client, settings).apply(plan2)
-    number_call2 = next(c for c in fake2.service_calls if c[0] == "number")
-    assert number_call2[2]["value"] == 12000

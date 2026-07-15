@@ -24,9 +24,6 @@ configuration:
   spike:
     name: Spike strategy
     description: SoC reserve behavior when Amber flags potential price spikes.
-  control:
-    name: Control mode
-    description: dry_run publishes recommendations only; active writes to the inverter.
   log_level:
     name: Log level
     description: Logging verbosity.

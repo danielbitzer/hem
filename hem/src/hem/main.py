@@ -24,7 +24,6 @@ from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
 from hem.adapters.weather import WeatherAdapter
 from hem.config import EnvSettings, Settings, load_settings, resolve_connection, resolve_data_dir
-from hem.executor import DryRunExecutor, Executor, SungrowExecutor
 from hem.forecast.load import default_timezone
 from hem.ha.client import HaClient
 from hem.ha.publisher import Publisher
@@ -95,7 +94,6 @@ async def cycle(
     recorder: Recorder,
     settings: Settings,
     app_state: AppState,
-    executor: Executor,
 ) -> Plan:
     now = datetime.now(UTC)
     data = await planner.gather(now)
@@ -104,23 +102,18 @@ async def cycle(
     plan = await asyncio.to_thread(planner.optimize, data, now)
     planner.previous_plan = plan
     step0 = plan.intervals[0]
-
-    # Control comes FIRST: a failed cosmetic sensor write must never delay
-    # applying a freshly computed plan to the inverter.
-    await executor.apply(plan)
     app_state.plan = plan
 
+    # Publishing IS the output: the user's actuator automation (see
+    # blueprints/hem_actuator.yaml) turns these sensors into inverter control.
     forecast_end = data.price_forecast_end.isoformat() if data.price_forecast_end else None
-    try:
-        await publisher.publish_plan(plan, settings.battery.capacity_kwh)
-        await publisher.publish_status(
-            "ok",
-            last_solve=now,
-            solve_ms=plan.solve_ms,
-            extra={"coverage": data.coverage, "price_forecast_end": forecast_end},
-        )
-    except Exception as e:  # noqa: BLE001 - publishing is cosmetic
-        log.warning("sensor publishing failed (%s); plan was still applied", e)
+    await publisher.publish_plan(plan, settings.battery.capacity_kwh)
+    await publisher.publish_status(
+        "ok",
+        last_solve=now,
+        solve_ms=plan.solve_ms,
+        extra={"coverage": data.coverage, "price_forecast_end": forecast_end},
+    )
 
     await _record(recorder, "inputs", cycle_inputs_to_json(data), now)
     await _record(
@@ -159,14 +152,7 @@ async def run() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     conn = resolve_connection(env)
-    log.info(
-        "HEM v%s starting (mode=%s, api=%s)", __version__, settings.control.mode, conn.rest_url
-    )
-    if settings.control.mode == "active":
-        log.warning(
-            "control.mode=active: HEM WILL WRITE TO THE INVERTER. "
-            "Ensure the watchdog blueprint is installed and entity names verified."
-        )
+    log.info("HEM v%s starting (api=%s)", __version__, conn.rest_url)
 
     if os.environ.get("SUPERVISOR_TOKEN"):
         log.info("dashboard: HA sidebar -> Energy Manager (ingress)")
@@ -178,8 +164,8 @@ async def run() -> None:
 
     # uvicorn's serve() captures SIGTERM/SIGINT and RE-RAISES them with default
     # handlers after its graceful stop — killing the process before our finally
-    # blocks (inverter revert!) can run. Own handlers, installed after the web
-    # task starts, win: they cancel this task so cleanup executes.
+    # blocks can run. Own handlers, installed after the web task starts, win:
+    # they cancel this task so shutdown is clean and logged.
     loop = asyncio.get_running_loop()
     main_task = asyncio.current_task()
     assert main_task is not None
@@ -193,11 +179,6 @@ async def run() -> None:
             if not await client.api_ok():
                 log.warning("Home Assistant API not reachable yet; will retry each cycle")
             publisher = Publisher(client)
-            executor: Executor = (
-                SungrowExecutor(client, settings)
-                if settings.control.mode == "active"
-                else DryRunExecutor()
-            )
             planner = Planner(
                 settings,
                 prices=AmberExpressAdapter(client, settings.entities),
@@ -213,7 +194,7 @@ async def run() -> None:
                 while True:
                     try:
                         async with asyncio.timeout(90):
-                            await cycle(planner, publisher, recorder, settings, app_state, executor)
+                            await cycle(planner, publisher, recorder, settings, app_state)
                         app_state.health.mark_success()
                     except asyncio.CancelledError:
                         raise
@@ -243,9 +224,6 @@ async def run() -> None:
                 watcher_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await watcher_task
-                # Last action while the HA client is still open: leave the
-                # inverter in self-consumption on any exit path.
-                await asyncio.shield(executor.shutdown())
     except asyncio.CancelledError:
         log.info("shutting down (signal received)")
     finally:

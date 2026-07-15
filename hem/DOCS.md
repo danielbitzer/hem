@@ -125,19 +125,53 @@ This compares HEM against no-battery and self-consumption baselines and reports
 $/day and spike revenue. **Do not enable active mode until HEM beats
 self-consumption on your own recorded data.**
 
-## Active mode (writes to the inverter)
+## Controlling your inverter (the actuator automation)
 
-`control.mode: active` makes HEM drive the inverter via the mkaiser package's
-select/number entities. Before enabling:
+HEM never writes to your inverter. It publishes recommendations; a Home
+Assistant automation that **you** own turns them into control — inspectable,
+traceable, editable, and disabling it is the master off-switch.
 
-1. Verify every entity ID and option string under `control.entities` against
-   your install (they vary between package versions).
-2. Create an `input_boolean.hem_override` helper — turning it on halts all
-   HEM writes instantly.
-3. Import the watchdog blueprint (`blueprints/hem_watchdog.yaml` in this repo)
-   and create the automation: it reverts the inverter to self-consumption if
-   HEM's heartbeat goes stale, even if the add-on dies uncleanly.
+Import `blueprints/hem_actuator.yaml` from this repo (Settings → Automations →
+Blueprints → Import), then create an automation from it. You supply three
+action sequences for your hardware; inside them the variables `power_kw`
+(signed, +charge/−discharge), `power_w` (magnitude in watts), and `action`
+are available. The blueprint has the failsafe built in: if HEM's heartbeat is
+stale, degraded, or the sensors are missing (HA restarted while HEM was
+down), your *idle* actions run — so a dead add-on can never leave the
+inverter stuck in forced mode. Keep the idle sequence simple and idempotent.
 
-Guardrails: write-on-change only, rate-limited (`max_writes_per_hour`),
-setpoints clamped to battery limits, self-consumption re-asserted on clean
-shutdown.
+Example sequences for the mkaiser Sungrow package (verify entity IDs and
+option strings against your install — they vary between package versions):
+
+```yaml
+# charge_actions
+- action: number.set_value
+  target: {entity_id: number.sungrow_battery_forced_charge_discharge_power}
+  data: {value: "{{ power_w }}"}
+- action: select.select_option
+  target: {entity_id: select.sungrow_battery_forced_charge_discharge_cmd}
+  data: {option: "Forced charge"}
+- action: select.select_option
+  target: {entity_id: select.sungrow_ems_mode}
+  data: {option: "Forced mode"}
+
+# discharge_actions — as above with option: "Forced discharge"
+
+# idle_actions (also the failsafe — keep robust)
+- action: select.select_option
+  target: {entity_id: select.sungrow_battery_forced_charge_discharge_cmd}
+  data: {option: "Stop (default)"}
+- action: select.select_option
+  target: {entity_id: select.sungrow_ems_mode}
+  data: {option: "Self-consumption mode (default)"}
+```
+
+Set the power register **before** engaging forced mode (as above), so a
+partial failure leaves the inverter in its previous mode rather than forced
+with a stale setpoint.
+
+**Do not create the automation until a backtest on your own recorded data
+shows HEM beating self-consumption** (see Backtesting above), and bench-test
+it: watch the inverter follow a charge → discharge → idle transition, then
+stop the HEM add-on and confirm the failsafe reverts to self-consumption
+within your configured heartbeat age.

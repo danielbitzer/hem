@@ -13,11 +13,13 @@ Inputs (all via existing HA integrations — no glue automations needed):
   [mkaiser Modbus package](https://github.com/mkaiser/Sungrow-SHx-Inverter-Modbus-Home-Assistant)
 - **Temperature forecast**: any HA `weather.*` entity (drives the rule-based load forecast)
 
-Outputs (dry-run mode, the default): `sensor.hem_action`, `sensor.hem_power_setpoint`,
-`sensor.hem_soc_target`, `sensor.hem_horizon_cost`, `sensor.hem_plan`, `sensor.hem_status`,
-plus an ingress dashboard. Setting `control.mode: active` makes HEM drive the inverter —
-read the active-mode checklist in [hem/DOCS.md](hem/DOCS.md) first (watchdog blueprint,
-override helper, entity verification).
+HEM is a **recommendation engine**: it publishes `sensor.hem_action`,
+`sensor.hem_power_setpoint`, `sensor.hem_soc_target`, `sensor.hem_horizon_cost`,
+`sensor.hem_plan`, and `sensor.hem_status` (plus an ingress dashboard), and never
+touches your inverter itself. Control happens through an HA automation you own,
+built from [blueprints/hem_actuator.yaml](blueprints/hem_actuator.yaml) — it maps
+the recommendations onto any inverter HA can control, with a heartbeat failsafe
+built in. See [hem/DOCS.md](hem/DOCS.md) for a Sungrow example.
 
 ## Install (HA OS / Supervised)
 

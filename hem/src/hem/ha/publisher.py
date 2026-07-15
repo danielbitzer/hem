@@ -54,6 +54,7 @@ class Publisher:
                 "icon": "mdi:battery-charging",
                 "solver_status": plan.solver_status,
                 "valid_until": step0.end.isoformat(),
+                "live_spike": plan.live_spike,
             },
         )
         await self._client.set_state(
@@ -65,6 +66,8 @@ class Publisher:
                 "device_class": "power",
                 "icon": "mdi:battery-arrow-up-down",
                 "convention": "positive = charging",
+                # magnitude in W, for inverter number entities
+                "power_w": round(abs(step0.power_kw) * 1000),
             },
         )
         await self._client.set_state(

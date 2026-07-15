@@ -64,19 +64,6 @@ options:
     high_price_threshold: 1.0
     reserve_penalty_per_kwh: 0.5
     discharge_kw: 0.0
-  control:
-    mode: dry_run
-    max_writes_per_hour: 12
-    entities:
-      ems_mode_select: select.sungrow_ems_mode
-      ems_self_consumption_option: "Self-consumption mode (default)"
-      ems_forced_option: "Forced mode"
-      forced_cmd_select: select.sungrow_battery_forced_charge_discharge_cmd
-      forced_charge_option: "Forced charge"
-      forced_discharge_option: "Forced discharge"
-      forced_stop_option: "Stop (default)"
-      forced_power_number: number.sungrow_battery_forced_charge_discharge_power
-      override_boolean: input_boolean.hem_override
   log_level: info
 schema:
   entities:
@@ -125,17 +112,4 @@ schema:
     high_price_threshold: float(0,20)
     reserve_penalty_per_kwh: float(0,20)
     discharge_kw: float(0,100)
-  control:
-    mode: list(dry_run|active)
-    max_writes_per_hour: int(1,60)
-    entities:
-      ems_mode_select: str?
-      ems_self_consumption_option: str?
-      ems_forced_option: str?
-      forced_cmd_select: str?
-      forced_charge_option: str?
-      forced_discharge_option: str?
-      forced_stop_option: str?
-      forced_power_number: str?
-      override_boolean: str?
   log_level: list(debug|info|warning|error)

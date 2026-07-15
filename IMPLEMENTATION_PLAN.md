@@ -3,7 +3,7 @@
 ## Status (2026-07-15 overnight session)
 
 - **Phase 0–3 complete** (scaffold, ingestion, optimizer + dry-run publishing, backtester), 80 tests green, multi-arch image verified.
-- **Phase 4 code complete** behind `control.mode: dry_run`; needs Dan's control-entity verification + bench test before ever enabling `active`.
+- **Phase 4 redesigned (2026-07-16, Dan's call)**: HEM never writes to the inverter. Actuation is a user-owned HA automation built from `blueprints/hem_actuator.yaml` (heartbeat failsafe built in), making HEM inverter-agnostic. The in-process `SungrowExecutor` was removed (git history has it). Remaining: backtest gate, then bench-test the actuator automation.
 - **Phase 5 mostly done**: ingress dashboard shipped; remaining: GitHub Actions prebuilt images (`home-assistant/builder` + `image:` key).
 - **Waiting on Dan**: live `hem.snapshot` verification, battery SoC/power entity IDs (+ a power capture while charging to pin the sign), then run the add-on in dry-run to start recording history for the backtester.
 
@@ -56,7 +56,6 @@ The repo root is an HA **add-on repository**; the add-on lives in `hem/` (which 
     │   ├── optimizer/model.py       # CVXPY MILP build/solve
     │   ├── optimizer/result.py      # solution → Plan
     │   ├── planner.py               # one cycle: gather → normalize → solve → hysteresis/fallback
-    │   ├── executor.py              # Executor protocol; DryRunExecutor; later SungrowExecutor
     │   ├── recorder.py              # JSONL snapshots of inputs/plans to /data (feeds backtester)
     │   ├── backtest/                # sim.py, policies.py (baselines), cli.py
     │   ├── web/                     # FastAPI ingress app + static index.html + vendored apexcharts
@@ -169,7 +168,7 @@ control:   { mode: dry_run, max_writes_per_hour: 12 }   # active = Phase 4
 **Phase 3 — Backtesting.** `backtest/sim.py`: receding-horizon replay of recorded JSONL (re-solve each step, apply step-0 decision, roll actuals forward), battery physics + billing model. Baselines: naive self-consumption, no-battery. Report $/day + % uplift.
 *Verify:* HEM ≥ self-consumption over ≥ 1 recorded week (if not, fix before ever enabling write mode); **spike capture rate** reported (revenue during actual spike intervals vs theoretical max) to validate the reserve heuristic; energy-conservation unit test on the simulator.
 
-**Phase 4 — Write-mode control** (behind `control.mode: active`). `SungrowExecutor`: plan step-0 → mkaiser entities (EMS mode select, forced charge/discharge cmd + power, export limit for curtail; Self-consumption for idle). Guardrails: write-on-change only + `max_writes_per_hour` rate limit, setpoint clamping, documented override `input_boolean` that halts writes, clean-shutdown hook re-asserting Self-consumption, and a **shipped HA automation blueprint**: `sensor.hem_status` stale/unavailable > 10 min → revert EMS mode to Self-consumption (HA-side dead-add-on watchdog, complementing the Supervisor `watchdog:` restart).
+**Phase 4 — Actuation via user-owned automation** (redesigned 2026-07-16; the original in-process `SungrowExecutor` was built, review-hardened, then removed in favor of this — see git history). HEM publishes recommendation sensors only; `blueprints/hem_actuator.yaml` maps `hem_action`/`hem_power_setpoint` onto any inverter via user-supplied action sequences, with the dead-add-on failsafe built in (heartbeat stale/degraded/missing → idle actions). DOCS ships a filled-in mkaiser Sungrow example (power register first, forced mode last).
 *Verify:* bench window — inverter follows forced charge → discharge; `docker stop` the add-on and confirm the blueprint reverts to Self-consumption; rate limiter respected.
 
 **Phase 5 — UI + polish.** Ingress charts page; DOCS.md; GitHub Action via `home-assistant/builder` publishing multi-arch images to GHCR + `image:` key (users pull instead of building on-device).

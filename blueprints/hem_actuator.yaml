@@ -1,0 +1,128 @@
+# HEM actuator: turn HEM's recommendation sensors into inverter control.
+#
+# HEM itself never writes to your inverter — this automation (which YOU own,
+# can read, edit, trace, and disable) is the only thing that does. You supply
+# three action sequences for your hardware:
+#
+#   charge_actions     — put the inverter into forced charge at `power_w` W
+#   discharge_actions  — forced discharge at `power_w` W
+#   idle_actions       — return to normal/self-consumption behaviour
+#
+# Inside your sequences these variables are available:
+#   power_kw  — signed battery setpoint (+charge / −discharge), float
+#   power_w   — magnitude in watts (int), handy for number.set_value
+#   action    — "charge" | "discharge" | "idle" | "curtail"
+#
+# SAFETY, built in: every run first checks HEM's heartbeat. If the add-on is
+# dead/stale (or reports degraded), idle_actions run instead — so a crashed
+# HEM can never leave your inverter stuck in forced mode. The failsafe check
+# runs every 5 minutes even without sensor changes, and also covers the
+# sensors disappearing entirely (HA restart while HEM is down). "curtail" is
+# treated as idle for the battery.
+#
+# Disabling this automation is the master off-switch: HEM goes back to being
+# a pure recommendation engine.
+blueprint:
+  name: HEM actuator — follow HEM's battery plan
+  description: >-
+    Applies sensor.hem_action / sensor.hem_power_setpoint to your inverter
+    via action sequences you define, with a built-in heartbeat failsafe that
+    reverts to idle when HEM is stale, degraded, or gone.
+  domain: automation
+  input:
+    action_sensor:
+      name: HEM action sensor
+      selector:
+        entity:
+          domain: sensor
+      default: sensor.hem_action
+    setpoint_sensor:
+      name: HEM power setpoint sensor
+      selector:
+        entity:
+          domain: sensor
+      default: sensor.hem_power_setpoint
+    status_sensor:
+      name: HEM status sensor
+      selector:
+        entity:
+          domain: sensor
+      default: sensor.hem_status
+    max_heartbeat_age_minutes:
+      name: Maximum heartbeat age (minutes)
+      description: Older than this and the failsafe (idle) runs.
+      selector:
+        number:
+          min: 5
+          max: 60
+          unit_of_measurement: min
+      default: 10
+    charge_actions:
+      name: Charge actions
+      description: Put the inverter into forced charge at power_w watts.
+      selector:
+        action:
+    discharge_actions:
+      name: Discharge actions
+      description: Put the inverter into forced discharge at power_w watts.
+      selector:
+        action:
+    idle_actions:
+      name: Idle / self-consumption actions
+      description: >-
+        Return the inverter to its normal behaviour. Also used as the
+        failsafe when HEM is stale or degraded — keep it simple and robust.
+      selector:
+        action:
+
+triggers:
+  # to: null -> fire on state VALUE changes only; the sensors' attributes are
+  # republished every cycle and must not re-run the actions
+  - trigger: state
+    entity_id: !input action_sensor
+    to: null
+  - trigger: state
+    entity_id: !input setpoint_sensor
+    to: null
+  # failsafe sweep: catches a dead/stale HEM even when no sensor ever changes
+  # again (including the sensors disappearing after an HA restart)
+  - trigger: time_pattern
+    minutes: "/5"
+
+variables:
+  action_sensor: !input action_sensor
+  setpoint_sensor: !input setpoint_sensor
+  status_sensor: !input status_sensor
+  max_heartbeat_age_minutes: !input max_heartbeat_age_minutes
+  hem_alive: >-
+    {% set s = states(status_sensor) %}
+    {% set hb = state_attr(status_sensor, 'heartbeat') %}
+    {{ s == 'ok' and hb is not none
+       and (now() - (hb | as_datetime)) < timedelta(minutes=max_heartbeat_age_minutes | int) }}
+  action: >-
+    {{ states(action_sensor) if hem_alive else 'idle' }}
+  power_kw: >-
+    {{ states(setpoint_sensor) | float(0) if hem_alive else 0 }}
+  power_w: >-
+    {{ state_attr(setpoint_sensor, 'power_w') | int(0) if hem_alive else 0 }}
+
+conditions:
+  # The periodic sweep only needs to act when HEM is NOT healthy (failsafe);
+  # while healthy, the state triggers handle every real change. Keeps the
+  # write rate at "only when something changed" + one idle re-assert per 5min
+  # while HEM is down (idempotent by requirement on idle_actions).
+  - condition: template
+    value_template: "{{ trigger.platform != 'time_pattern' or not hem_alive }}"
+
+actions:
+  - choose:
+      - conditions: "{{ action == 'charge' }}"
+        sequence: !input charge_actions
+      - conditions: "{{ action == 'discharge' }}"
+        sequence: !input discharge_actions
+    # idle, curtail, failsafe (stale/degraded/missing HEM) all land here
+    default: !input idle_actions
+
+# restart: a fresh recommendation mid-sequence supersedes the old one
+mode: restart
+max_exceeded: silent

@@ -339,8 +339,8 @@ class Planner:
             solver_status="stale (reusing previous plan)",
             solve_ms=0.0,
             computed_at=prev.computed_at,
-            # carry the spike flag: a solver failure during a confirmed spike
-            # must not silently drop the raised discharge cap in the executor
+            # carry the spike flag so the published live_spike attribute stays
+            # truthful while a fallback plan is in effect
             live_spike=prev.live_spike,
         )
 
