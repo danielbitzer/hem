@@ -25,6 +25,7 @@ class Publisher:
         last_solve: datetime | None = None,
         solve_ms: float | None = None,
         detail: str = "",
+        extra: dict[str, Any] | None = None,
     ) -> None:
         attrs: dict[str, Any] = {
             "friendly_name": "HEM status",
@@ -38,6 +39,8 @@ class Publisher:
             attrs["solve_ms"] = round(solve_ms, 1)
         if detail:
             attrs["detail"] = detail
+        if extra:
+            attrs.update(extra)
         await self._client.set_state("sensor.hem_status", status, attrs)
 
     async def publish_plan(self, plan: Plan, capacity_kwh: float) -> None:

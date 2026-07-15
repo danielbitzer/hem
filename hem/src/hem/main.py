@@ -113,9 +113,20 @@ async def cycle(
         now,
     )
     await publisher.publish_plan(plan, settings.battery.capacity_kwh)
-    await publisher.publish_status("ok", last_solve=now, solve_ms=plan.solve_ms)
+    forecast_end = data.price_forecast_end.isoformat() if data.price_forecast_end else None
+    await publisher.publish_status(
+        "ok",
+        last_solve=now,
+        solve_ms=plan.solve_ms,
+        extra={"coverage": data.coverage, "price_forecast_end": forecast_end},
+    )
     await executor.apply(plan)
     app_state.plan = plan
+    app_state.meta = {
+        "capacity_kwh": settings.battery.capacity_kwh,
+        "price_forecast_end": forecast_end,
+        "coverage": data.coverage,
+    }
     log.info(
         "cycle ok: action=%s power=%+.2fkW soc=%.0f%% cost=$%.2f solve=%.0fms",
         step0.action.value,

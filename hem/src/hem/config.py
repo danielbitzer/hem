@@ -187,13 +187,18 @@ class Settings(BaseModel):
     log_level: Literal["debug", "info", "warning", "error"] = "info"
 
 
+DEV_OPTIONS_FALLBACK = "dev-options.json"
+
+
 def load_settings(path: str | Path | None = None) -> Settings:
-    path = Path(path) if path else Path(DEFAULT_OPTIONS_FILE)
-    try:
-        raw = json.loads(path.read_text())
-    except FileNotFoundError:
-        raise RuntimeError(
-            f"Options file not found: {path}. Under the Supervisor this is rendered "
-            "automatically; standalone, point HEM_OPTIONS_FILE at your options JSON."
-        ) from None
-    return Settings.model_validate(raw)
+    candidates = (
+        [Path(path)] if path else [Path(DEFAULT_OPTIONS_FILE), Path(DEV_OPTIONS_FALLBACK)]
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return Settings.model_validate(json.loads(candidate.read_text()))
+    raise RuntimeError(
+        f"Options file not found (tried {', '.join(str(c) for c in candidates)}). "
+        "Under the Supervisor /data/options.json is rendered automatically; "
+        "standalone, create ./dev-options.json or set HEM_OPTIONS_FILE."
+    )

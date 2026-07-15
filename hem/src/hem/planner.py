@@ -37,7 +37,7 @@ from hem.optimizer.model import (
     solve,
 )
 from hem.optimizer.result import classify_action, solution_to_plan
-from hem.timegrid import TimeGrid, resample_mean, resample_previous
+from hem.timegrid import TimeGrid, coverage, resample_mean, resample_previous
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +57,10 @@ class CycleData:
     prices: PriceForecast
     battery: BatteryState
     temps: np.ndarray | None
+    # Where the real price forecast ends; steps beyond this hold the last
+    # value (padding) and should be read with appropriate suspicion.
+    price_forecast_end: datetime | None = None
+    coverage: dict[str, float] | None = None
 
 
 class Planner:
@@ -125,7 +129,26 @@ class Planner:
             soc0_kwh=battery.soc_frac * self._battery_params.capacity_kwh,
             reserve_kwh=self._spike_reserve(sell_raw, grid, now, prices),
         )
-        return CycleData(grid=grid, inputs=inputs, prices=prices, battery=battery, temps=temps)
+        cov = {
+            "buy": round(coverage(prices.buy, grid), 3),
+            "sell": round(coverage(prices.sell, grid), 3),
+            "pv": round(coverage(pv, grid), 3),
+        }
+        if min(cov.values()) < 0.7:
+            log.warning(
+                "forecast coverage low (%s): steps beyond the forecast hold the "
+                "last value — tail of the plan is speculative",
+                cov,
+            )
+        return CycleData(
+            grid=grid,
+            inputs=inputs,
+            prices=prices,
+            battery=battery,
+            temps=temps,
+            price_forecast_end=min(prices.buy.end, prices.sell.end),
+            coverage=cov,
+        )
 
     def _haircut_sell(self, sell: np.ndarray, grid: TimeGrid, now: datetime) -> np.ndarray:
         """Discount above-median sell prices beyond HAIRCUT_START toward the

@@ -91,14 +91,31 @@ async function refresh() {
   const step0 = iv[0];
 
   const computed = new Date(plan.computed_at);
-  document.querySelector("#meta").textContent =
+  const meta = plan.meta || {};
+  let metaText =
     `computed ${computed.toLocaleString()} · ${plan.solver_status} · ${Math.round(plan.solve_ms)} ms · ${iv.length} intervals`;
+  const forecastEnd = meta.price_forecast_end ? new Date(meta.price_forecast_end).getTime() : null;
+  if (forecastEnd && forecastEnd < t[t.length - 1]) {
+    metaText += ` · price forecast ends ${new Date(forecastEnd).toLocaleString()} (tail is held flat)`;
+  }
+  document.querySelector("#meta").textContent = metaText;
   const actionEl = document.querySelector("#t-action");
   actionEl.textContent = step0.action;
   actionEl.className = "v action-" + step0.action;
   document.querySelector("#t-power").textContent = step0.power_kw.toFixed(2) + " kW";
-  document.querySelector("#t-soc").textContent = step0.soc_end.toFixed(1) + " kWh";
+  const cap = meta.capacity_kwh;
+  document.querySelector("#t-soc").textContent = cap
+    ? (100 * step0.soc_end / cap).toFixed(0) + "% · " + step0.soc_end.toFixed(1) + " kWh"
+    : step0.soc_end.toFixed(1) + " kWh";
   document.querySelector("#t-cost").textContent = "$" + plan.objective_cost.toFixed(2);
+
+  const paddedTail = forecastEnd && forecastEnd < t[t.length - 1] ? {
+    xaxis: [{
+      x: forecastEnd, x2: t[t.length - 1],
+      fillColor: dark ? "#5c5c66" : "#9a9aa2", opacity: 0.15,
+      label: { text: "forecast padded", style: { color: "var(--muted)", background: "transparent" } },
+    }],
+  } : {};
 
   render("chart-prices", base("prices", {
     series: [
@@ -106,6 +123,7 @@ async function refresh() {
       { name: "sell", data: pt(iv.map(x => x.sell)) },
     ],
     colors: ["#e74c3c", "#10ac84"],
+    annotations: paddedTail,
   }));
   render("chart-power", base("power", {
     series: [

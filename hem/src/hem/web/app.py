@@ -47,6 +47,8 @@ class HealthState:
 class AppState:
     health: HealthState = field(default_factory=HealthState)
     plan: Plan | None = None
+    # cycle metadata for the dashboard: capacity_kwh, price_forecast_end, coverage
+    meta: dict = field(default_factory=dict)
 
 
 def create_app(state: AppState) -> FastAPI:
@@ -64,6 +66,7 @@ def create_app(state: AppState) -> FastAPI:
                 "solver_status": plan.solver_status,
                 "solve_ms": plan.solve_ms,
                 "objective_cost": plan.objective_cost,
+                "meta": state.meta,
                 "intervals": [
                     {
                         "start": iv.start.isoformat(),
