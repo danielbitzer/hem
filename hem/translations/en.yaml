@@ -1,10 +1,10 @@
 configuration:
-  price_source:
-    name: Price source
-    description: Which Amber integration provides prices (amber_express recommended).
   entities:
     name: Input entities
-    description: Entity IDs for prices, solar forecast, battery state and weather.
+    description: >-
+      Entity IDs for prices, solar forecast, battery state and weather.
+      load_power (optional) is a house load sensor in W or kW, required for
+      the history load-profile source.
   battery:
     name: Battery parameters
     description: >-
@@ -17,7 +17,11 @@ configuration:
       export limit) — distinct from the battery power limits.
   load_profile:
     name: Load profile
-    description: Hourly baseline load and temperature-dependent rules.
+    description: >-
+      Hourly baseline load and temperature-dependent rules. Set source to
+      "history" (with entities.load_power) to learn the hourly baseline from
+      your actual consumption instead; the configured hours then act as the
+      fallback for hours with too little data.
   optimizer:
     name: Optimizer settings
     description: Horizon, solver timeout and behavioral thresholds.

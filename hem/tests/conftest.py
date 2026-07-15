@@ -50,9 +50,13 @@ class FakeHa:
         self.service_fault: object = None
         self.app = web.Application()
         self.app.router.add_get("/api/", self._root)
+        # recorder history: entity_id -> list of raw history item dicts
+        self.history: dict[str, list[dict]] = {}
+        self.history_requests: list[dict] = []
         self.app.router.add_get("/api/states/{entity_id}", self._get_state)
         self.app.router.add_post("/api/states/{entity_id}", self._post_state)
         self.app.router.add_post("/api/services/{domain}/{service}", self._call_service)
+        self.app.router.add_get("/api/history/period/{start}", self._get_history)
 
     def add_fixture(self, name: str) -> str:
         payload = fixture_state_payload(name)
@@ -74,6 +78,15 @@ class FakeHa:
         entity_id = request.match_info["entity_id"]
         self.posted.append((entity_id, await request.json()))
         return web.json_response({}, status=201)
+
+    async def _get_history(self, request: web.Request) -> web.Response:
+        entity_id = request.query.get("filter_entity_id", "")
+        self.history_requests.append(
+            {"start": request.match_info["start"], **dict(request.query)}
+        )
+        if entity_id not in self.history:
+            return web.json_response([])
+        return web.json_response([self.history[entity_id]])
 
     async def _call_service(self, request: web.Request) -> web.Response:
         domain, service = request.match_info["domain"], request.match_info["service"]

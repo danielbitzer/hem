@@ -54,6 +54,25 @@ optimizer respects both simultaneously.
 24 hourly baseline kW values for weekdays and weekends, plus temperature rules that add
 heating/cooling load when the forecast temperature crosses a threshold.
 
+Set `source: history` to **learn the hourly baseline from your actual
+consumption** instead: HEM reads recorder history of `entities.load_power` (a
+house load sensor in W or kW — e.g. the mkaiser package's `sensor.load_power`)
+over the last `history_days` (14) and builds time-weighted hour-of-day
+averages, split weekday/weekend, in your local timezone. The learning refreshes
+every 6 hours. The configured `weekday_kw`/`weekend_kw` remain the fallback —
+per hour when a bucket has under 2 observed hours of data, and entirely when
+history is unavailable — so a recorder purge can degrade the forecast but never
+break planning.
+
+Two caveats with `source: history`:
+
+- The learned averages already include your typical heating/cooling, so keep
+  `temp_rules` for extreme-day corrections only (or empty) to avoid counting
+  the same aircon twice.
+- Make sure the sensor is not excluded from the HA recorder, and that
+  `history_days` fits inside your recorder purge window (default 10 days —
+  `history_days` beyond it just learns from what exists).
+
 ### `optimizer`
 
 - `horizon_hours` (36) — how far ahead each plan looks. Longer sees more of

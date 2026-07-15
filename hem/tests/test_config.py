@@ -52,6 +52,17 @@ def test_invalid_soc_bounds_rejected(tmp_path: Path):
         load_settings(write_options(tmp_path, options))
 
 
+def test_history_load_source_requires_load_power_entity(tmp_path: Path):
+    options = json.loads(json.dumps(MINIMAL_OPTIONS))
+    options["load_profile"]["source"] = "history"
+    with pytest.raises(ValueError, match="load_power"):
+        load_settings(write_options(tmp_path, options))
+    options["entities"]["load_power"] = "sensor.load_power"
+    settings = load_settings(write_options(tmp_path, options))
+    assert settings.load_profile.source == "history"
+    assert settings.load_profile.history_days == 14
+
+
 def test_load_profile_must_have_24_values(tmp_path: Path):
     options = json.loads(json.dumps(MINIMAL_OPTIONS))
     options["load_profile"]["weekday_kw"] = [0.5] * 23

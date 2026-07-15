@@ -25,7 +25,7 @@ from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
 from hem.adapters.weather import WeatherAdapter
 from hem.config import Settings
-from hem.forecast.load import BaselineLoadForecaster
+from hem.forecast.load import BaselineLoadForecaster, LoadForecaster
 from hem.models import Action, BatteryState, Plan, PriceForecast, Series
 from hem.optimizer.model import (
     BatteryParams,
@@ -116,13 +116,16 @@ class Planner:
         battery: SungrowAdapter,
         weather: WeatherAdapter,
         tz: ZoneInfo,
+        load_forecaster: LoadForecaster | None = None,
     ):
         self._settings = settings
         self._prices = prices
         self._solar = solar
         self._battery = battery
         self._weather = weather
-        self._load_forecaster = BaselineLoadForecaster(settings.load_profile, tz)
+        self._load_forecaster = load_forecaster or BaselineLoadForecaster(
+            settings.load_profile, tz
+        )
         self._battery_params = battery_params(settings)
         self._grid_params = GridParams(
             import_limit_kw=settings.grid.import_limit_kw,
@@ -131,6 +134,8 @@ class Planner:
         self.previous_plan: Plan | None = None
 
     async def gather(self, now: datetime) -> CycleData:
+        # rate-limited internally; a no-op for the static profile forecaster
+        await self._load_forecaster.refresh(now)
         prices, pv, battery = await asyncio.gather(
             self._prices.get_prices(),
             self._solar.get_pv(),

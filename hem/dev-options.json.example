@@ -7,7 +7,8 @@
     "pv_forecast_tomorrow": "sensor.home_energy_production_tomorrow",
     "battery_soc": "sensor.battery_level",
     "battery_power": "sensor.battery_power",
-    "weather": "weather.henley_beach_hourly"
+    "weather": "weather.henley_beach_hourly",
+    "load_power": "sensor.load_power"
   },
   "battery": {
     "capacity_kwh": 12.8,
@@ -34,7 +35,9 @@
     "temp_rules": [
       { "when": "temp_above", "threshold_c": 28.0, "add_kw": 1.5 },
       { "when": "temp_below", "threshold_c": 12.0, "add_kw": 1.2 }
-    ]
+    ],
+    "source": "history",
+    "history_days": 14
   },
   "log_level": "debug"
 }

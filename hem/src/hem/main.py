@@ -24,7 +24,7 @@ from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
 from hem.adapters.weather import WeatherAdapter
 from hem.config import EnvSettings, Settings, load_settings, resolve_connection, resolve_data_dir
-from hem.forecast.load import default_timezone
+from hem.forecast.load import build_load_forecaster, default_timezone
 from hem.ha.client import HaClient
 from hem.ha.publisher import Publisher
 from hem.models import Plan
@@ -179,13 +179,17 @@ async def run() -> None:
             if not await client.api_ok():
                 log.warning("Home Assistant API not reachable yet; will retry each cycle")
             publisher = Publisher(client)
+            tz = default_timezone()
             planner = Planner(
                 settings,
                 prices=AmberExpressAdapter(client, settings.entities),
                 solar=OpenMeteoSolarAdapter(client, settings.entities),
                 battery=SungrowAdapter(client, settings.entities, settings.battery),
                 weather=WeatherAdapter(client, settings.entities),
-                tz=default_timezone(),
+                tz=tz,
+                load_forecaster=build_load_forecaster(
+                    client, settings.entities.load_power, settings.load_profile, tz
+                ),
             )
             watcher = PriceWatcher(settings)
             watcher_task = asyncio.create_task(watcher.run(client))

@@ -78,6 +78,7 @@ schema:
     battery_soc: str
     battery_power: str
     weather: str
+    load_power: str?
   battery:
     capacity_kwh: float(0.5,200)
     max_charge_kw: float(0.1,100)
@@ -101,6 +102,8 @@ schema:
       - when: list(temp_above|temp_below)
         threshold_c: float(-20,60)
         add_kw: float(0,50)
+    source: list(profile|history)?
+    history_days: int(1,28)?
   optimizer:
     horizon_hours: int(2,72)
     terminal_soc_value: str

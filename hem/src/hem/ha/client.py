@@ -119,6 +119,36 @@ class HaClient:
         async with self.session.post(self._url(f"/states/{entity_id}"), json=payload) as resp:
             resp.raise_for_status()
 
+    async def get_history(
+        self, entity_id: str, start: datetime, end: datetime
+    ) -> list[tuple[datetime, str]]:
+        """Recorder history for one entity as (timestamp, state) tuples.
+
+        Uses minimal_response, so entries between the first and last carry only
+        last_changed + state — exactly what a piecewise-constant series needs.
+        """
+        url = self._url(f"/history/period/{start.isoformat()}")
+        params = {
+            "filter_entity_id": entity_id,
+            "end_time": end.isoformat(),
+            "minimal_response": "",
+            "no_attributes": "",
+        }
+        async with self.session.get(url, params=params) as resp:
+            if resp.status == 404:
+                raise EntityNotFoundError(entity_id)
+            resp.raise_for_status()
+            data = await resp.json()
+        if not data:
+            return []
+        out = []
+        for item in data[0]:
+            ts = item.get("last_changed") or item.get("last_updated")
+            if ts is None:
+                continue
+            out.append((datetime.fromisoformat(ts), item["state"]))
+        return out
+
     async def call_service(
         self, domain: str, service: str, data: dict[str, Any], return_response: bool = False
     ) -> Any:

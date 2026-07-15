@@ -90,6 +90,9 @@ class Entities(BaseModel):
     battery_soc: str
     battery_power: str
     weather: str
+    # House load power sensor (W or kW), required for load_profile.source:
+    # history — e.g. the mkaiser package's sensor.load_power.
+    load_power: str = ""
 
     @model_validator(mode="after")
     def _default_forecast_entities(self) -> Self:
@@ -138,6 +141,13 @@ class LoadProfile(BaseModel):
     weekday_kw: list[float] = Field(min_length=24, max_length=24)
     weekend_kw: list[float] = Field(min_length=24, max_length=24)
     temp_rules: list[TempRule] = []
+    # history: learn the hourly baseline from recorder history of
+    # entities.load_power (time-weighted hour-of-day averages, weekday/weekend
+    # split); the profile above remains the per-hour fallback. With history,
+    # learned averages already include typical heating/cooling — keep
+    # temp_rules for extreme-day corrections only.
+    source: Literal["profile", "history"] = "profile"
+    history_days: int = Field(default=14, ge=1, le=28)
 
 
 class Optimizer(BaseModel):
@@ -168,6 +178,15 @@ class Settings(BaseModel):
     optimizer: Optimizer = Optimizer()
     spike: Spike = Spike()
     log_level: Literal["debug", "info", "warning", "error"] = "info"
+
+    @model_validator(mode="after")
+    def _history_source_needs_load_entity(self) -> Self:
+        if self.load_profile.source == "history" and not self.entities.load_power:
+            raise ValueError(
+                "load_profile.source: history requires entities.load_power "
+                "(a house load power sensor in W or kW)"
+            )
+        return self
 
 
 DEV_OPTIONS_FALLBACK = "dev-options.json"
