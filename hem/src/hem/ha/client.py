@@ -109,12 +109,16 @@ class HaClient:
         async with self.session.post(self._url(f"/states/{entity_id}"), json=payload) as resp:
             resp.raise_for_status()
 
-    async def call_service(self, domain: str, service: str, data: dict[str, Any]) -> Any:
-        async with self.session.post(
-            self._url(f"/services/{domain}/{service}"), json=data
-        ) as resp:
+    async def call_service(
+        self, domain: str, service: str, data: dict[str, Any], return_response: bool = False
+    ) -> Any:
+        url = self._url(f"/services/{domain}/{service}")
+        if return_response:
+            url += "?return_response"
+        async with self.session.post(url, json=data) as resp:
             resp.raise_for_status()
-            return await resp.json()
+            body = await resp.json()
+        return body["service_response"] if return_response else body
 
 
 def _parse_state(data: dict[str, Any]) -> State:

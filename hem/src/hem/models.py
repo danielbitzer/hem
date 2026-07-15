@@ -8,35 +8,53 @@ Internal conventions (adapters normalize to these, nothing else re-converts):
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 
 
 @dataclass(frozen=True)
 class Series:
-    """Timestamped series at a source-native resolution (pre-grid-resampling)."""
+    """Piecewise-constant timestamped series at source-native resolution.
 
-    times: list[datetime]
+    values[i] holds from times[i] until times[i+1] ("previous" interpolation).
+    Intervals need not be uniform — Amber Express on a 5-minute site emits
+    5-min entries near-term and 30-min entries beyond.
+    """
+
+    times: list[datetime]  # interval starts, ascending, tz-aware UTC
     values: list[float]
-    duration: timedelta  # native interval length (30 min Amber, 15 min Open-Meteo)
 
     def __post_init__(self) -> None:
         if len(self.times) != len(self.values):
             raise ValueError(f"times ({len(self.times)}) != values ({len(self.values)})")
+        if any(b <= a for a, b in zip(self.times, self.times[1:], strict=False)):
+            raise ValueError("times must be strictly ascending")
+
+    @property
+    def start(self) -> datetime:
+        return self.times[0]
+
+    @property
+    def end(self) -> datetime:
+        return self.times[-1]
 
 
 @dataclass
 class PriceForecast:
+    """Prices in $/kWh; sell (feed-in) positive = revenue.
+
+    Series values are Amber's advanced price prediction (the `forecast`
+    attribute of Amber Express price sensors); the first entry is the
+    current interval.
+    """
+
     buy: Series
     sell: Series
-    spike: list[bool]  # per buy interval: spike_status in {potential, spike}
-    current_buy: float  # live price sensor values (5-min updates)
+    current_buy: float  # live price sensor states (5-min updates)
     current_sell: float
-    # per buy interval, advanced-price band if the source provides it (amber_express)
-    buy_high: list[float] = field(default_factory=list)
-    sell_high: list[float] = field(default_factory=list)
-    live_spike: bool = False
+    live_spike: bool = False  # from the price-spike binary sensor
+    updated_at: datetime | None = None  # oldest source last_updated, for staleness checks
 
 
 @dataclass

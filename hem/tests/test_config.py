@@ -13,7 +13,7 @@ MINIMAL_OPTIONS = {
         "pv_forecast_tomorrow": "sensor.energy_production_tomorrow",
         "battery_soc": "sensor.battery_level",
         "battery_power": "sensor.battery_power",
-        "weather": "weather.home",
+        "weather": "weather.henley_beach_hourly",
     },
     "battery": {"capacity_kwh": 12.8, "max_charge_kw": 5.0, "max_discharge_kw": 5.0},
     "grid": {"import_limit_kw": 15.0, "export_limit_kw": 5.0},

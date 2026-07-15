@@ -17,14 +17,14 @@ watchdog: http://[HOST]:[PORT:8099]/health
 options:
   price_source: amber_express
   entities:
-    buy_price: sensor.amber_express_home_general_price
-    sell_price: sensor.amber_express_home_feed_in_price
-    price_spike: binary_sensor.amber_express_home_price_spike
-    pv_forecast_today: sensor.energy_production_today
-    pv_forecast_tomorrow: sensor.energy_production_tomorrow
+    buy_price: sensor.amber_express_general_price
+    sell_price: sensor.amber_express_feed_in_price
+    price_spike: binary_sensor.amber_express_price_spike
+    pv_forecast_today: sensor.home_energy_production_today
+    pv_forecast_tomorrow: sensor.home_energy_production_tomorrow
     battery_soc: sensor.battery_level
     battery_power: sensor.battery_power
-    weather: weather.home
+    weather: weather.henley_beach_hourly
   battery:
     capacity_kwh: 12.8
     max_charge_kw: 5.0
@@ -35,6 +35,7 @@ options:
     soc_max: 1.0
     wear_cost_per_kwh: 0.04
     allow_grid_charge: true
+    power_convention: charge_positive
   grid:
     import_limit_kw: 15.0
     export_limit_kw: 5.0
@@ -90,6 +91,7 @@ schema:
     soc_max: float(0,1)
     wear_cost_per_kwh: float(0,10)
     allow_grid_charge: bool
+    power_convention: list(charge_positive|charge_negative)
   grid:
     import_limit_kw: float(0.1,1000)
     export_limit_kw: float(0,1000)

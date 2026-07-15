@@ -1,14 +1,14 @@
 {
   "price_source": "amber_express",
   "entities": {
-    "buy_price": "sensor.amber_express_home_general_price",
-    "sell_price": "sensor.amber_express_home_feed_in_price",
-    "price_spike": "binary_sensor.amber_express_home_price_spike",
-    "pv_forecast_today": "sensor.energy_production_today",
-    "pv_forecast_tomorrow": "sensor.energy_production_tomorrow",
+    "buy_price": "sensor.amber_express_general_price",
+    "sell_price": "sensor.amber_express_feed_in_price",
+    "price_spike": "binary_sensor.amber_express_price_spike",
+    "pv_forecast_today": "sensor.home_energy_production_today",
+    "pv_forecast_tomorrow": "sensor.home_energy_production_tomorrow",
     "battery_soc": "sensor.battery_level",
     "battery_power": "sensor.battery_power",
-    "weather": "weather.home"
+    "weather": "weather.henley_beach_hourly"
   },
   "battery": {
     "capacity_kwh": 12.8,
