@@ -76,7 +76,7 @@ class Planner:
         self._battery = battery
         self._weather = weather
         self._load_forecaster = BaselineLoadForecaster(settings.load_profile, tz)
-        self._battery_params = _battery_params(settings)
+        self._battery_params = battery_params(settings)
         self._grid_params = GridParams(
             import_limit_kw=settings.grid.import_limit_kw,
             export_limit_kw=settings.grid.export_limit_kw,
@@ -262,7 +262,7 @@ class Planner:
         )
 
 
-def _battery_params(settings: Settings) -> BatteryParams:
+def battery_params(settings: Settings) -> BatteryParams:
     b = settings.battery
     return BatteryParams(
         capacity_kwh=b.capacity_kwh,
