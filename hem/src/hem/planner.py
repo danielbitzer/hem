@@ -50,6 +50,49 @@ class InputsStale(Exception):
     pass
 
 
+def spike_reserve_vector(
+    sell: np.ndarray,
+    dt_hours: np.ndarray,
+    *,
+    lookahead_hours: float,
+    high_price_threshold: float,
+    reserve_kwh: float,
+    soc_max_kwh: float,
+) -> np.ndarray | None:
+    """Soft SoC floor up to the first high-price step within the lookahead
+    window, so energy is held ready to sell into a potential spike.
+
+    Pure so the backtester's HemPolicy runs EXACTLY this logic."""
+    if reserve_kwh <= 0:
+        return None
+    offset = 0.0  # hours from now to the step's start
+    trigger = None
+    for i, dt in enumerate(dt_hours):
+        if offset > lookahead_hours:
+            break
+        if sell[i] >= high_price_threshold:
+            trigger = i
+            break
+        offset += float(dt)
+    if trigger is None or trigger == 0:
+        return None  # no potential spike ahead, or it's already here — sell, don't hold
+    reserve = np.zeros(len(dt_hours))
+    reserve[:trigger] = min(reserve_kwh, soc_max_kwh)
+    return reserve
+
+
+def discharge_cap_vector(
+    steps: int, live_spike: bool, spike_discharge_kw: float, max_discharge_kw: float
+) -> np.ndarray | None:
+    """Raised step-0 discharge cap during a CONFIRMED spike only (pure, shared
+    with the backtester)."""
+    if not live_spike or spike_discharge_kw <= max_discharge_kw:
+        return None
+    caps = np.full(steps, max_discharge_kw)
+    caps[0] = spike_discharge_kw
+    return caps
+
+
 @dataclass
 class CycleData:
     grid: TimeGrid
@@ -159,15 +202,14 @@ class Planner:
         )
 
     def _discharge_caps(self, steps: int, live_spike: bool) -> np.ndarray | None:
-        """Raise the discharge cap for the CURRENT interval only, and only
-        while the spike sensor confirms a spike — everyday operation keeps the
-        wear-conscious battery.max_discharge_kw."""
-        spike_kw = self._settings.spike.discharge_kw
-        if not live_spike or spike_kw <= self._battery_params.max_discharge_kw:
-            return None
-        caps = np.full(steps, self._battery_params.max_discharge_kw)
-        caps[0] = spike_kw
-        log.info("confirmed spike: step-0 discharge cap raised to %.1f kW", spike_kw)
+        caps = discharge_cap_vector(
+            steps,
+            live_spike,
+            self._settings.spike.discharge_kw,
+            self._battery_params.max_discharge_kw,
+        )
+        if caps is not None:
+            log.info("confirmed spike: step-0 discharge cap raised to %.1f kW", caps[0])
         return caps
 
     def _haircut_sell(self, sell: np.ndarray, grid: TimeGrid, now: datetime) -> np.ndarray:
@@ -186,29 +228,23 @@ class Planner:
     def _spike_reserve(
         self, sell: np.ndarray, grid: TimeGrid, now: datetime, prices: PriceForecast
     ) -> np.ndarray | None:
-        """Soft SoC floor up to the first high-price step within the lookahead
-        window, so energy is held ready to sell into a potential spike."""
         cfg = self._settings.spike
-        if cfg.reserve_kwh <= 0:
-            return None
-        lookahead = timedelta(hours=cfg.lookahead_hours)
-        trigger = None
-        for i, step in enumerate(grid.steps):
-            if step.start - now > lookahead:
-                break
-            if sell[i] >= cfg.high_price_threshold:
-                trigger = i
-                break
-        if trigger is None or trigger == 0:
-            return None  # no potential spike ahead, or it's already here — sell, don't hold
-        reserve = np.zeros(len(grid))
-        reserve[:trigger] = min(cfg.reserve_kwh, self._battery_params.soc_max_kwh)
-        log.info(
-            "spike reserve armed: %.1f kWh held until %s (sell %.2f $/kWh)",
-            reserve[0],
-            grid.steps[trigger].start.isoformat(),
-            sell[trigger],
+        reserve = spike_reserve_vector(
+            sell,
+            grid.dt_hours,
+            lookahead_hours=cfg.lookahead_hours,
+            high_price_threshold=cfg.high_price_threshold,
+            reserve_kwh=cfg.reserve_kwh,
+            soc_max_kwh=self._battery_params.soc_max_kwh,
         )
+        if reserve is not None:
+            trigger = int(np.argmin(reserve > 0))
+            log.info(
+                "spike reserve armed: %.1f kWh held until %s (sell %.2f $/kWh)",
+                reserve[0],
+                grid.steps[trigger].start.isoformat(),
+                sell[trigger],
+            )
         return reserve
 
     def optimize(self, data: CycleData, now: datetime) -> Plan:

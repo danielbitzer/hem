@@ -49,7 +49,13 @@ def main() -> None:
     policies = [
         NoBatteryPolicy(),
         SelfConsumptionPolicy(),
-        HemPolicy(battery, grid, settings.spike.reserve_penalty_per_kwh),
+        HemPolicy(
+            battery,
+            grid,
+            spike=settings.spike,
+            action_switch_threshold_dollars=settings.optimizer.action_switch_threshold_dollars,
+            solver_timeout_s=settings.optimizer.solver_timeout_s,
+        ),
     ]
     results: list[SimResult] = [
         simulate(p, records, battery, settings.grid.export_limit_kw, soc0) for p in policies

@@ -26,6 +26,8 @@ class Series:
     values: list[float]
 
     def __post_init__(self) -> None:
+        if not self.times:
+            raise ValueError("Series must have at least one point")
         if len(self.times) != len(self.values):
             raise ValueError(f"times ({len(self.times)}) != values ({len(self.values)})")
         if any(b <= a for a, b in zip(self.times, self.times[1:], strict=False)):

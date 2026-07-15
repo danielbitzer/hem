@@ -19,7 +19,11 @@ import numpy as np
 from hem.models import Series
 
 PAD_STEP = timedelta(minutes=30)
-MIN_STEP = timedelta(minutes=1)
+# Only boundaries essentially AT `now` are dropped. Dropping anything larger
+# merges the next price interval into step 0 at the stale pre-boundary price —
+# a spike starting <1min after an event-triggered re-solve would vanish from
+# the plan. A sub-minute first step is harmless to the MILP.
+MIN_STEP = timedelta(seconds=1)
 
 
 @dataclass(frozen=True)
@@ -107,12 +111,7 @@ def resample_mean(series: Series, grid: TimeGrid, series_end: datetime | None = 
     """
     times = series.times
     if series_end is None:
-        if len(times) > 1:
-            deltas = sorted((b - a for a, b in zip(times, times[1:], strict=False)))
-            native = deltas[len(deltas) // 2]
-        else:
-            native = PAD_STEP
-        series_end = times[-1] + native
+        series_end = times[-1] + _native_interval(series)
 
     # Segment edges and values covering (-inf, +inf) via hold-first/hold-last.
     edges = [t.timestamp() for t in times] + [series_end.timestamp()]
@@ -137,9 +136,22 @@ def resample_mean(series: Series, grid: TimeGrid, series_end: datetime | None = 
     return out
 
 
+def _native_interval(series: Series) -> timedelta:
+    if len(series.times) > 1:
+        deltas = sorted(b - a for a, b in zip(series.times, series.times[1:], strict=False))
+        return deltas[len(deltas) // 2]
+    return PAD_STEP
+
+
 def coverage(series: Series, grid: TimeGrid) -> float:
-    """Fraction of the grid span covered by the series' span."""
+    """Fraction of the grid span covered by the series' span.
+
+    The last point covers one native interval past its start (matching
+    resample_mean's series_end), so a forecast that exactly spans the grid
+    reports 1.0 rather than being short by one interval.
+    """
+    series_end = series.end + _native_interval(series)
     a = max(grid.start, series.start)
-    b = min(grid.end, series.end)
+    b = min(grid.end, series_end)
     total = (grid.end - grid.start).total_seconds()
     return max(0.0, (b - a).total_seconds()) / total if total else 0.0

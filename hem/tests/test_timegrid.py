@@ -42,8 +42,18 @@ def test_grid_pads_past_short_forecast():
     assert grid.steps[2].end - grid.steps[2].start == timedelta(minutes=30)
 
 
-def test_grid_drops_near_now_boundary():
+def test_grid_keeps_near_now_boundary():
+    """A price boundary seconds away must NOT be merged into step 0 — that
+    would price the following interval at the stale pre-boundary value (a
+    spike starting <1min after an event-triggered re-solve would vanish)."""
     boundaries = [NOW + timedelta(seconds=30), NOW + timedelta(minutes=10)]
+    grid = TimeGrid.build(NOW, boundaries, timedelta(hours=1))
+    assert grid.steps[0].end == NOW + timedelta(seconds=30)
+    assert grid.steps[1].end == NOW + timedelta(minutes=10)
+
+
+def test_grid_drops_boundary_at_now():
+    boundaries = [NOW + timedelta(microseconds=1), NOW + timedelta(minutes=10)]
     grid = TimeGrid.build(NOW, boundaries, timedelta(hours=1))
     assert grid.steps[0].end == NOW + timedelta(minutes=10)
 
@@ -83,3 +93,18 @@ def test_coverage_reports_forecast_shortfall():
     long = TimeGrid.build(NOW, series.times, timedelta(hours=72))
     assert coverage(series, short) == pytest.approx(1.0)
     assert coverage(series, long) < 0.5
+
+
+def test_coverage_exact_span_is_full():
+    """The last point covers one native interval — a series exactly spanning
+    the grid must report 1.0, not fall short by an interval."""
+    t0 = datetime(2026, 7, 15, 0, 0, tzinfo=UTC)
+    times = [t0 + timedelta(minutes=30 * i) for i in range(4)]  # covers 2h
+    series = Series(times=times, values=[1.0] * 4)
+    grid = TimeGrid.build(t0, times, timedelta(hours=2))
+    assert coverage(series, grid) == pytest.approx(1.0)
+
+
+def test_empty_series_rejected():
+    with pytest.raises(ValueError, match="at least one point"):
+        Series(times=[], values=[])

@@ -108,7 +108,7 @@ schema:
   optimizer:
     horizon_hours: int(2,72)
     terminal_soc_value: str
-    solver_timeout_s: int(1,300)
+    solver_timeout_s: int(1,60)
     action_switch_threshold_dollars: float(0,10)
     forecast_haircut: float(0,1)
   spike:

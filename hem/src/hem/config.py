@@ -142,7 +142,8 @@ class LoadProfile(BaseModel):
 class Optimizer(BaseModel):
     horizon_hours: int = Field(default=36, ge=2, le=72)
     terminal_soc_value: Literal["auto"] | float = "auto"
-    solver_timeout_s: int = Field(default=30, ge=1, le=300)
+    # must stay below the 90s cycle timeout in main.py
+    solver_timeout_s: int = Field(default=30, ge=1, le=60)
     action_switch_threshold_dollars: float = Field(default=0.02, ge=0)
     forecast_haircut: float = Field(default=0.2, ge=0, le=1)
 

@@ -89,6 +89,7 @@ class Policy(Protocol):
 @dataclass
 class StepResult:
     ts: datetime
+    dt_hours: float
     battery_kw: float
     grid_import_kw: float
     grid_export_kw: float
@@ -108,10 +109,9 @@ class SimResult:
 
     @property
     def days(self) -> float:
-        if len(self.steps) < 2:
-            return 0.0
-        span = self.steps[-1].ts - self.steps[0].ts
-        return span.total_seconds() / 86400
+        # Sum of BILLED time, matching the cost numerator — a recording gap
+        # contributes (almost) no cost, so it must not inflate the day count.
+        return sum(s.dt_hours for s in self.steps) / 24
 
     @property
     def cost_per_day(self) -> float:
@@ -145,6 +145,7 @@ def simulate(
         result.steps.append(
             StepResult(
                 ts=rec.ts,
+                dt_hours=dt,
                 battery_kw=battery_kw,
                 grid_import_kw=grid_import,
                 grid_export_kw=grid_export,
