@@ -1,5 +1,12 @@
 # HEM — Home Energy Manager: Implementation Plan
 
+## Status (2026-07-15 overnight session)
+
+- **Phase 0–3 complete** (scaffold, ingestion, optimizer + dry-run publishing, backtester), 80 tests green, multi-arch image verified.
+- **Phase 4 code complete** behind `control.mode: dry_run`; needs Dan's control-entity verification + bench test before ever enabling `active`.
+- **Phase 5 mostly done**: ingress dashboard shipped; remaining: GitHub Actions prebuilt images (`home-assistant/builder` + `image:` key).
+- **Waiting on Dan**: live `hem.snapshot` verification, battery SoC/power entity IDs (+ a power capture while charging to pin the sign), then run the add-on in dry-run to start recording history for the backtester.
+
 ## Context
 
 Dan (Amber Electric customer, Sungrow hybrid inverter + battery via the mkaiser Modbus YAML package) wants a purpose-built home energy app that optimizes battery charge/discharge and solar-export decisions to profit from Amber's 5-minute wholesale pricing. Existing tools (EMHASS, Predbat) do MILP battery optimization but require significant glue (price-injection automations, cron loops, config sprawl); the decision is to build a tailored app that natively consumes the Amber, Open-Meteo Solar Forecast, and Sungrow entities with zero glue automations.
