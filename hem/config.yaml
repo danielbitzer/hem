@@ -1,0 +1,119 @@
+name: Home Energy Manager
+version: 0.1.0
+slug: hem
+description: MILP battery/solar optimizer for Amber Electric dynamic pricing
+url: https://github.com/danbitzer/hem
+arch:
+  - aarch64
+  - amd64
+init: true
+homeassistant_api: true
+hassio_api: false
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:battery-charging
+panel_title: Energy Manager
+watchdog: http://[HOST]:[PORT:8099]/health
+options:
+  price_source: amber_express
+  entities:
+    buy_price: sensor.amber_express_home_general_price
+    sell_price: sensor.amber_express_home_feed_in_price
+    price_spike: binary_sensor.amber_express_home_price_spike
+    pv_forecast_today: sensor.energy_production_today
+    pv_forecast_tomorrow: sensor.energy_production_tomorrow
+    battery_soc: sensor.battery_level
+    battery_power: sensor.battery_power
+    weather: weather.home
+  battery:
+    capacity_kwh: 12.8
+    max_charge_kw: 5.0
+    max_discharge_kw: 5.0
+    efficiency_charge: 0.95
+    efficiency_discharge: 0.95
+    soc_min: 0.1
+    soc_max: 1.0
+    wear_cost_per_kwh: 0.04
+    allow_grid_charge: true
+  grid:
+    import_limit_kw: 15.0
+    export_limit_kw: 5.0
+  load_profile:
+    weekday_kw:
+      [0.4, 0.4, 0.4, 0.4, 0.4, 0.5, 0.7, 0.8, 0.6, 0.5, 0.5, 0.5,
+       0.5, 0.5, 0.5, 0.6, 0.7, 0.9, 1.2, 1.2, 1.0, 0.8, 0.6, 0.5]
+    weekend_kw:
+      [0.4, 0.4, 0.4, 0.4, 0.4, 0.5, 0.6, 0.8, 0.9, 0.8, 0.7, 0.7,
+       0.7, 0.7, 0.6, 0.6, 0.7, 0.9, 1.2, 1.2, 1.0, 0.8, 0.6, 0.5]
+    temp_rules:
+      - when: temp_above
+        threshold_c: 28.0
+        add_kw: 1.5
+      - when: temp_below
+        threshold_c: 12.0
+        add_kw: 1.2
+  optimizer:
+    horizon_hours: 36
+    terminal_soc_value: auto
+    solver_timeout_s: 30
+    action_switch_threshold_dollars: 0.02
+    forecast_haircut: 0.2
+  spike:
+    lookahead_hours: 4
+    reserve_kwh: 6.0
+    high_price_threshold: 1.0
+    reserve_penalty_per_kwh: 0.5
+  control:
+    mode: dry_run
+    max_writes_per_hour: 12
+  log_level: info
+schema:
+  price_source: list(amber_express|amber_core)
+  entities:
+    buy_price: str
+    sell_price: str
+    buy_forecast: str?
+    sell_forecast: str?
+    price_spike: str?
+    pv_forecast_today: str
+    pv_forecast_tomorrow: str
+    battery_soc: str
+    battery_power: str
+    weather: str
+  battery:
+    capacity_kwh: float(0.5,200)
+    max_charge_kw: float(0.1,100)
+    max_discharge_kw: float(0.1,100)
+    efficiency_charge: float(0.5,1)
+    efficiency_discharge: float(0.5,1)
+    soc_min: float(0,1)
+    soc_max: float(0,1)
+    wear_cost_per_kwh: float(0,10)
+    allow_grid_charge: bool
+  grid:
+    import_limit_kw: float(0.1,1000)
+    export_limit_kw: float(0,1000)
+  load_profile:
+    weekday_kw:
+      - float(0,50)
+    weekend_kw:
+      - float(0,50)
+    temp_rules:
+      - when: list(temp_above|temp_below)
+        threshold_c: float(-20,60)
+        add_kw: float(0,50)
+  optimizer:
+    horizon_hours: int(2,72)
+    terminal_soc_value: str
+    solver_timeout_s: int(1,300)
+    action_switch_threshold_dollars: float(0,10)
+    forecast_haircut: float(0,1)
+  spike:
+    lookahead_hours: float(0,48)
+    reserve_kwh: float(0,200)
+    high_price_threshold: float(0,20)
+    reserve_penalty_per_kwh: float(0,20)
+  control:
+    mode: list(dry_run|active)
+    max_writes_per_hour: int(1,60)
+  log_level: list(debug|info|warning|error)

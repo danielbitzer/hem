@@ -1,0 +1,28 @@
+configuration:
+  price_source:
+    name: Price source
+    description: Which Amber integration provides prices (amber_express recommended).
+  entities:
+    name: Input entities
+    description: Entity IDs for prices, solar forecast, battery state and weather.
+  battery:
+    name: Battery parameters
+    description: Capacity, power limits, efficiency, SoC bounds and wear cost.
+  grid:
+    name: Grid limits
+    description: Import/export power limits in kW.
+  load_profile:
+    name: Load profile
+    description: Hourly baseline load and temperature-dependent rules.
+  optimizer:
+    name: Optimizer settings
+    description: Horizon, solver timeout and behavioral thresholds.
+  spike:
+    name: Spike strategy
+    description: SoC reserve behavior when Amber flags potential price spikes.
+  control:
+    name: Control mode
+    description: dry_run publishes recommendations only; active writes to the inverter.
+  log_level:
+    name: Log level
+    description: Logging verbosity.

@@ -1,0 +1,5 @@
+# Debian base for all arches: cvxpy/highspy/numpy ship manylinux wheels (no musllinux),
+# so an Alpine/musl base would force slow, fragile source builds.
+build_from:
+  aarch64: python:3.13-slim-bookworm
+  amd64: python:3.13-slim-bookworm

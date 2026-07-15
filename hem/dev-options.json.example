@@ -1,0 +1,33 @@
+{
+  "price_source": "amber_express",
+  "entities": {
+    "buy_price": "sensor.amber_express_home_general_price",
+    "sell_price": "sensor.amber_express_home_feed_in_price",
+    "price_spike": "binary_sensor.amber_express_home_price_spike",
+    "pv_forecast_today": "sensor.energy_production_today",
+    "pv_forecast_tomorrow": "sensor.energy_production_tomorrow",
+    "battery_soc": "sensor.battery_level",
+    "battery_power": "sensor.battery_power",
+    "weather": "weather.home"
+  },
+  "battery": {
+    "capacity_kwh": 12.8,
+    "max_charge_kw": 5.0,
+    "max_discharge_kw": 5.0
+  },
+  "grid": {
+    "import_limit_kw": 15.0,
+    "export_limit_kw": 5.0
+  },
+  "load_profile": {
+    "weekday_kw": [0.4, 0.4, 0.4, 0.4, 0.4, 0.5, 0.7, 0.8, 0.6, 0.5, 0.5, 0.5,
+                   0.5, 0.5, 0.5, 0.6, 0.7, 0.9, 1.2, 1.2, 1.0, 0.8, 0.6, 0.5],
+    "weekend_kw": [0.4, 0.4, 0.4, 0.4, 0.4, 0.5, 0.6, 0.8, 0.9, 0.8, 0.7, 0.7,
+                   0.7, 0.7, 0.6, 0.6, 0.7, 0.9, 1.2, 1.2, 1.0, 0.8, 0.6, 0.5],
+    "temp_rules": [
+      { "when": "temp_above", "threshold_c": 28.0, "add_kw": 1.5 },
+      { "when": "temp_below", "threshold_c": 12.0, "add_kw": 1.2 }
+    ]
+  },
+  "log_level": "debug"
+}

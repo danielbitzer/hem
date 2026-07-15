@@ -1,0 +1,17 @@
+services:
+  hem:
+    build: ./hem
+    environment:
+      HEM_HA_URL: ${HEM_HA_URL:-http://homeassistant.local:8123}
+      HEM_HA_TOKEN: ${HEM_HA_TOKEN:?set in .env or environment}
+      HEM_OPTIONS_FILE: /config/options.json
+      HEM_LOG_LEVEL: ${HEM_LOG_LEVEL:-debug}
+    volumes:
+      - ./dev-options.json:/config/options.json:ro
+      - hem-data:/data
+    ports:
+      - "8099:8099"
+    restart: unless-stopped
+
+volumes:
+  hem-data:

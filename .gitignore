@@ -8,3 +8,10 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Local dev secrets/config (copy from hem/dev-options.json.example)
+dev-options.json
+.env
+
+# Claude Code local settings
+.claude/settings.local.json
