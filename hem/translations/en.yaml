@@ -7,10 +7,14 @@ configuration:
     description: Entity IDs for prices, solar forecast, battery state and weather.
   battery:
     name: Battery parameters
-    description: Capacity, power limits, efficiency, SoC bounds and wear cost.
+    description: >-
+      Capacity, battery-side power limits (wear-conscious), efficiency, SoC
+      bounds and wear cost. See the Documentation tab for each field.
   grid:
-    name: Grid limits
-    description: Import/export power limits in kW.
+    name: Grid connection limits
+    description: >-
+      Net import/export limits at the meter (connection capacity and DNSP
+      export limit) — distinct from the battery power limits.
   load_profile:
     name: Load profile
     description: Hourly baseline load and temperature-dependent rules.

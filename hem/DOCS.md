@@ -33,6 +33,22 @@ against every discharged kWh in the objective — a reasonable starting point is
 replacement cost divided by total lifetime throughput (e.g. $6000 / 38 MWh ≈ $0.16, or
 much lower if you expect the battery to outlive its warranty).
 
+### `grid`
+
+Limits of your **grid connection**, distinct from the battery's power limits:
+
+- `import_limit_kw` — maximum net draw from the grid for the whole house
+  (connection/main-breaker capacity).
+- `export_limit_kw` — maximum net feed-in allowed by your DNSP/connection
+  agreement. This caps what actually reaches the grid regardless of how hard
+  the battery discharges: export = battery discharge + PV − house load. If
+  you raise `spike.discharge_kw`, raise this to match (if permitted) or the
+  extra battery power has nowhere to go.
+
+`battery.max_charge_kw` / `max_discharge_kw` limit the *battery* (cell wear,
+inverter DC side); the grid limits cap the *net AC flow at the meter*. The
+optimizer respects both simultaneously.
+
 ### `load_profile`
 
 24 hourly baseline kW values for weekdays and weekends, plus temperature rules that add
