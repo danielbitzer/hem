@@ -89,7 +89,7 @@ class AmberExpressAdapter:
             current_buy=buy_state.as_float(),
             current_sell=sell_state.as_float(),
             live_spike=_spike_active(spike_state),
-            updated_at=min(buy_state.last_updated, sell_state.last_updated),
+            updated_at=min(buy_state.freshness, sell_state.freshness),
         )
 
 

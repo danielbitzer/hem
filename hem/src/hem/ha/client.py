@@ -33,7 +33,15 @@ class State:
     entity_id: str
     state: str
     attributes: dict[str, Any]
-    last_updated: datetime
+    last_updated: datetime  # when the VALUE last changed
+    # when the integration last reported, even unchanged (HA last_reported);
+    # use this for staleness — a battery sitting at 78% for an hour still
+    # reports every poll, but last_updated stays frozen.
+    last_reported: datetime | None = None
+
+    @property
+    def freshness(self) -> datetime:
+        return self.last_reported or self.last_updated
 
     @property
     def available(self) -> bool:
@@ -161,9 +169,11 @@ class HaClient:
 
 
 def _parse_state(data: dict[str, Any]) -> State:
+    last_reported = data.get("last_reported")
     return State(
         entity_id=data["entity_id"],
         state=data["state"],
         attributes=data.get("attributes", {}),
         last_updated=datetime.fromisoformat(data["last_updated"]),
+        last_reported=datetime.fromisoformat(last_reported) if last_reported else None,
     )

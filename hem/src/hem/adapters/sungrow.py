@@ -64,5 +64,5 @@ class SungrowAdapter:
                 power_state, self._battery.power_convention == "charge_positive"
             ),
             capacity_kwh=self._battery.capacity_kwh,
-            ts=min(soc_state.last_updated, power_state.last_updated),
+            ts=min(soc_state.freshness, power_state.freshness),
         )

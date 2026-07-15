@@ -78,7 +78,12 @@ async function refresh() {
     if (!resp.ok) throw new Error((await resp.json()).error || resp.statusText);
     plan = await resp.json();
   } catch (e) {
-    document.querySelector("#error").textContent = "No plan yet: " + e.message;
+    let msg = "No plan yet: " + e.message;
+    try {
+      const health = await (await fetch("./health", { cache: "no-store" })).json();
+      if (health.last_error) msg += " — last cycle error: " + health.last_error;
+    } catch {}
+    document.querySelector("#error").textContent = msg;
     document.querySelector("#error").style.display = "block";
     return;
   }

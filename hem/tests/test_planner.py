@@ -132,6 +132,21 @@ async def test_stale_battery_raises():
             await planner.gather(NOW)
 
 
+async def test_unchanged_but_reported_battery_is_fresh():
+    """HA only bumps last_updated when the VALUE changes; a battery sitting at
+    a constant SoC must not be treated as stale while last_reported is fresh.
+    (Regression: live loop wrongly went degraded after ~10 min of flat SoC.)"""
+    settings = make_settings()
+    fake = full_fake_ha()
+    add_battery_states(fake, ts="2026-07-15T10:00:00+00:00")  # value unchanged for 1.5h
+    for entity in ("sensor.battery_level", "sensor.battery_power"):
+        fake.states[entity]["last_reported"] = "2026-07-15T11:36:00+00:00"  # polled 30s ago
+    async with fake_ha_client(fake) as client:
+        planner = make_planner(client, settings)
+        data = await planner.gather(NOW)
+    assert data.battery.soc_frac == pytest.approx(0.725)
+
+
 async def test_spike_reserve_armed_from_forecast():
     settings = make_settings(
         spike={"lookahead_hours": 48, "reserve_kwh": 6.0, "high_price_threshold": 0.6}
