@@ -129,9 +129,27 @@ class Spike(BaseModel):
     reserve_penalty_per_kwh: float = Field(default=0.5, ge=0)
 
 
+class ControlEntities(BaseModel):
+    """Sungrow control entities (mkaiser Modbus package). Defaults follow the
+    package's usage doc; verify against your install before enabling active
+    mode — names and option strings vary between package versions."""
+
+    ems_mode_select: str = "select.sungrow_ems_mode"
+    ems_self_consumption_option: str = "Self-consumption mode (default)"
+    ems_forced_option: str = "Forced mode"
+    forced_cmd_select: str = "select.sungrow_battery_forced_charge_discharge_cmd"
+    forced_charge_option: str = "Forced charge"
+    forced_discharge_option: str = "Forced discharge"
+    forced_stop_option: str = "Stop (default)"
+    forced_power_number: str = "number.sungrow_battery_forced_charge_discharge_power"
+    # input_boolean the user can flip to halt all HEM writes immediately
+    override_boolean: str = "input_boolean.hem_override"
+
+
 class Control(BaseModel):
     mode: Literal["dry_run", "active"] = "dry_run"
     max_writes_per_hour: int = Field(default=12, ge=1, le=60)
+    entities: ControlEntities = ControlEntities()
 
 
 class Settings(BaseModel):

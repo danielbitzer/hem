@@ -1,0 +1,62 @@
+# HEM dead-add-on watchdog.
+#
+# If HEM dies while the inverter is in Forced mode, the battery stays dumb
+# until someone notices. This HA-side automation reverts to self-consumption
+# whenever HEM's heartbeat goes stale — it lives in HA, so it survives the
+# add-on dying. Import via Settings -> Automations -> Blueprints, or copy
+# into config/blueprints/automation/hem/.
+#
+# Adjust the two entity IDs / option string to match your Sungrow package.
+blueprint:
+  name: HEM watchdog — revert inverter to self-consumption
+  description: >-
+    Reverts the Sungrow EMS mode to self-consumption when the HEM add-on's
+    status sensor is stale or unavailable for more than 10 minutes.
+  domain: automation
+  input:
+    hem_status:
+      name: HEM status sensor
+      selector:
+        entity:
+          domain: sensor
+      default: sensor.hem_status
+    ems_mode_select:
+      name: EMS mode select entity
+      selector:
+        entity:
+          domain: select
+      default: select.sungrow_ems_mode
+    self_consumption_option:
+      name: Self-consumption option label
+      selector:
+        text:
+      default: "Self-consumption mode (default)"
+
+triggers:
+  - trigger: state
+    entity_id: !input hem_status
+    to:
+      - unavailable
+      - unknown
+    for:
+      minutes: 10
+  - trigger: state
+    entity_id: !input hem_status
+    to: degraded
+    for:
+      minutes: 10
+
+actions:
+  - action: select.select_option
+    target:
+      entity_id: !input ems_mode_select
+    data:
+      option: !input self_consumption_option
+  - action: persistent_notification.create
+    data:
+      title: HEM watchdog fired
+      message: >-
+        HEM's heartbeat went stale — the inverter was reverted to
+        self-consumption mode. Check the HEM add-on.
+
+mode: single

@@ -118,4 +118,14 @@ schema:
   control:
     mode: list(dry_run|active)
     max_writes_per_hour: int(1,60)
+    entities:
+      ems_mode_select: str?
+      ems_self_consumption_option: str?
+      ems_forced_option: str?
+      forced_cmd_select: str?
+      forced_charge_option: str?
+      forced_discharge_option: str?
+      forced_stop_option: str?
+      forced_power_number: str?
+      override_boolean: str?
   log_level: list(debug|info|warning|error)

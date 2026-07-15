@@ -22,6 +22,7 @@ from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
 from hem.adapters.weather import WeatherAdapter
 from hem.config import Settings, load_settings, resolve_connection
+from hem.executor import DryRunExecutor, Executor, SungrowExecutor
 from hem.forecast.load import default_timezone
 from hem.ha.client import HaClient
 from hem.ha.publisher import Publisher
@@ -83,6 +84,7 @@ async def cycle(
     recorder: Recorder,
     settings: Settings,
     app_state: AppState,
+    executor: Executor,
 ) -> Plan:
     now = datetime.now(UTC)
     data = await planner.gather(now)
@@ -103,6 +105,7 @@ async def cycle(
     )
     await publisher.publish_plan(plan, settings.battery.capacity_kwh)
     await publisher.publish_status("ok", last_solve=now, solve_ms=plan.solve_ms)
+    await executor.apply(plan)
     app_state.plan = plan
     log.info(
         "cycle ok: action=%s power=%+.2fkW soc=%.0f%% cost=$%.2f solve=%.0fms",
@@ -126,7 +129,10 @@ async def run() -> None:
         "HEM v%s starting (mode=%s, api=%s)", __version__, settings.control.mode, conn.rest_url
     )
     if settings.control.mode == "active":
-        log.warning("control.mode=active is not implemented yet (Phase 4); running dry-run")
+        log.warning(
+            "control.mode=active: HEM WILL WRITE TO THE INVERTER. "
+            "Ensure the watchdog blueprint is installed and entity names verified."
+        )
 
     app_state = AppState()
     web_config = uvicorn.Config(
@@ -141,6 +147,11 @@ async def run() -> None:
             if not await client.api_ok():
                 log.warning("Home Assistant API not reachable yet; will retry each cycle")
             publisher = Publisher(client)
+            executor: Executor = (
+                SungrowExecutor(client, settings)
+                if settings.control.mode == "active"
+                else DryRunExecutor()
+            )
             planner = Planner(
                 settings,
                 prices=AmberExpressAdapter(client, settings.entities),
@@ -156,7 +167,7 @@ async def run() -> None:
                 while True:
                     try:
                         async with asyncio.timeout(90):
-                            await cycle(planner, publisher, recorder, settings, app_state)
+                            await cycle(planner, publisher, recorder, settings, app_state, executor)
                         app_state.health.mark_success()
                     except asyncio.CancelledError:
                         raise
@@ -181,6 +192,7 @@ async def run() -> None:
                 watcher_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await watcher_task
+                await executor.shutdown()
     finally:
         web_server.should_exit = True
         await web_task

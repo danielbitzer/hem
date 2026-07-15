@@ -63,3 +63,40 @@ recorder:
     entities:
       - sensor.hem_plan
 ```
+
+## Dashboard
+
+The add-on serves an ingress panel (sidebar → Energy Manager): current
+action/setpoint/SoC/cost tiles plus charts of prices, PV/load forecast, planned
+battery power with grid flows, and the SoC trajectory. Auto-refreshes every
+minute; fully offline (no CDN).
+
+## Backtesting
+
+Every cycle's normalized inputs are recorded to `/data/history/*.jsonl`. After
+a few days of dry-run operation, replay them:
+
+```sh
+python -m hem.backtest.cli --history /data/history --options /data/options.json
+```
+
+This compares HEM against no-battery and self-consumption baselines and reports
+$/day and spike revenue. **Do not enable active mode until HEM beats
+self-consumption on your own recorded data.**
+
+## Active mode (writes to the inverter)
+
+`control.mode: active` makes HEM drive the inverter via the mkaiser package's
+select/number entities. Before enabling:
+
+1. Verify every entity ID and option string under `control.entities` against
+   your install (they vary between package versions).
+2. Create an `input_boolean.hem_override` helper — turning it on halts all
+   HEM writes instantly.
+3. Import the watchdog blueprint (`blueprints/hem_watchdog.yaml` in this repo)
+   and create the automation: it reverts the inverter to self-consumption if
+   HEM's heartbeat goes stale, even if the add-on dies uncleanly.
+
+Guardrails: write-on-change only, rate-limited (`max_writes_per_hour`),
+setpoints clamped to battery limits, self-consumption re-asserted on clean
+shutdown.
