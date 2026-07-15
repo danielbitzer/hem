@@ -67,6 +67,8 @@ function base(id, extra) {
 
 // Create once, then only push data — rebuilding options on refresh resets
 // chart type/colors (the "bar chart turns into a line chart" bug).
+// Annotations use the per-instance API: updateOptions propagates across
+// charts sharing a group, leaking the "forecast padded" band to all charts.
 function render(el, options, series, annotations) {
   if (!charts[el]) {
     options.series = series;
@@ -76,7 +78,10 @@ function render(el, options, series, annotations) {
     return;
   }
   charts[el].updateSeries(series, false);
-  if (annotations) charts[el].updateOptions({ annotations }, false, false);
+  if (annotations) {
+    charts[el].clearAnnotations();
+    for (const a of annotations.xaxis || []) charts[el].addXaxisAnnotation(a, false);
+  }
 }
 
 async function refresh() {
