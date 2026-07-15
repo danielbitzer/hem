@@ -65,10 +65,18 @@ function base(id, extra) {
   }, extra || {});
 }
 
-function render(el, options) {
-  if (charts[el]) { charts[el].updateOptions(options, true, false); return; }
-  charts[el] = new ApexCharts(document.querySelector("#" + el), options);
-  charts[el].render();
+// Create once, then only push data — rebuilding options on refresh resets
+// chart type/colors (the "bar chart turns into a line chart" bug).
+function render(el, options, series, annotations) {
+  if (!charts[el]) {
+    options.series = series;
+    if (annotations) options.annotations = annotations;
+    charts[el] = new ApexCharts(document.querySelector("#" + el), options);
+    charts[el].render();
+    return;
+  }
+  charts[el].updateSeries(series, false);
+  if (annotations) charts[el].updateOptions({ annotations }, false, false);
 }
 
 async function refresh() {
@@ -123,38 +131,52 @@ async function refresh() {
   } : {};
 
   render("chart-prices", base("prices", {
-    series: [
-      { name: "buy", data: pt(iv.map(x => x.buy)) },
-      { name: "sell", data: pt(iv.map(x => x.sell)) },
-    ],
     colors: ["#e74c3c", "#10ac84"],
-    annotations: paddedTail,
-  }));
+  }), [
+    { name: "buy", data: pt(iv.map(x => x.buy)) },
+    { name: "sell", data: pt(iv.map(x => x.sell)) },
+  ], paddedTail);
+
   render("chart-power", base("power", {
-    series: [
-      { name: "PV", data: pt(iv.map(x => x.pv_kw)) },
-      { name: "load", data: pt(iv.map(x => x.load_kw)) },
-    ],
     colors: ["#f39c12", "#8e8e93"],
-  }));
+  }), [
+    { name: "PV", data: pt(iv.map(x => x.pv_kw)) },
+    { name: "load", data: pt(iv.map(x => x.load_kw)) },
+  ]);
+
+  const batteryColors = ["#2e86de", "#e74c3c", "#10ac84"];
   render("chart-battery", base("battery", {
     chart: Object.assign(base("battery").chart, { type: "bar" }),
-    series: [
-      { name: "battery", data: pt(iv.map(x => x.power_kw)) },
-      { name: "import", data: pt(iv.map(x => x.grid_import_kw)) },
-      { name: "export", data: pt(iv.map(x => -x.grid_export_kw)) },
-    ],
-    colors: ["#2e86de", "#e74c3c", "#10ac84"],
-    plotOptions: { bar: { columnWidth: "80%" } },
-    stroke: { width: 0 },
-  }));
-  render("chart-soc", base("soc", {
-    series: [{ name: "SoC", data: pt(iv.map(x => x.soc_end)) }],
+    colors: batteryColors,
+    plotOptions: { bar: { columnWidth: "100%" } },
+    // bars sized to the smallest (5-min) slot are hairlines over a 36h axis;
+    // a matching-color stroke fattens them enough to read
+    stroke: { width: 3, colors: batteryColors },
+  }), [
+    { name: "battery", data: pt(iv.map(x => x.power_kw)) },
+    { name: "import", data: pt(iv.map(x => x.grid_import_kw)) },
+    { name: "export", data: pt(iv.map(x => -x.grid_export_kw)) },
+  ]);
+
+  const socOpts = base("soc", {
     colors: ["#2e86de"],
     stroke: { width: 2, curve: "smooth" },
     fill: { type: "gradient", gradient: { opacityFrom: 0.25, opacityTo: 0.02 } },
     chart: Object.assign(base("soc").chart, { type: "area" }),
-  }));
+  });
+  if (cap) {
+    // left axis kWh, right axis % — same linear scale, so the line serves both
+    socOpts.yaxis = [
+      { seriesName: "SoC", min: 0, max: cap, title: { text: "kWh" },
+        labels: { formatter: v => v.toFixed(0) } },
+      { seriesName: "SoC", opposite: true, min: 0, max: 100, title: { text: "%" },
+        labels: { formatter: v => v.toFixed(0) + "%" } },
+    ];
+    socOpts.tooltip = Object.assign(socOpts.tooltip || {}, {
+      y: { formatter: v => v.toFixed(1) + " kWh · " + (100 * v / cap).toFixed(0) + "%" },
+    });
+  }
+  render("chart-soc", socOpts, [{ name: "SoC", data: pt(iv.map(x => x.soc_end)) }]);
 }
 
 refresh();
