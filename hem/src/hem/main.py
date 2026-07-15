@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import time
 from datetime import UTC, datetime
 
@@ -154,6 +155,11 @@ async def run() -> None:
             "control.mode=active: HEM WILL WRITE TO THE INVERTER. "
             "Ensure the watchdog blueprint is installed and entity names verified."
         )
+
+    if os.environ.get("SUPERVISOR_TOKEN"):
+        log.info("dashboard: HA sidebar -> Energy Manager (ingress)")
+    else:
+        log.info("dashboard: http://localhost:%d", WEB_PORT)
 
     app_state = AppState()
     web_config = uvicorn.Config(

@@ -67,6 +67,9 @@ class OptimizerInputs:
     load: np.ndarray
     soc0_kwh: float
     reserve_kwh: np.ndarray | None = None  # soft SoC floor per step (spike readiness)
+    # Per-step discharge cap override (kW); None -> battery.max_discharge_kw
+    # everywhere. Used to raise the cap during a confirmed spike interval.
+    max_discharge_kw_step: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -147,7 +150,13 @@ def solve(
         soc >= battery.soc_min_kwh,
         soc <= battery.soc_max_kwh,
         pc <= battery.max_charge_kw * y,
-        pd <= battery.max_discharge_kw * (1 - y),
+        pd
+        <= cp.multiply(
+            inputs.max_discharge_kw_step
+            if inputs.max_discharge_kw_step is not None
+            else np.full(T, battery.max_discharge_kw),
+            1 - y,
+        ),
         gi <= grid.import_limit_kw,
         ge <= grid.export_limit_kw,
     ]

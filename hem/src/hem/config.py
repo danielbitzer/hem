@@ -150,6 +150,10 @@ class Spike(BaseModel):
     reserve_kwh: float = Field(default=6.0, ge=0)
     high_price_threshold: float = Field(default=1.0, ge=0)
     reserve_penalty_per_kwh: float = Field(default=0.5, ge=0)
+    # Discharge cap while a CONFIRMED spike is active (current interval only).
+    # Lets a wear-conscious everyday max_discharge_kw be exceeded for the rare
+    # high-value hours. 0 = disabled (always use battery.max_discharge_kw).
+    discharge_kw: float = Field(default=0.0, ge=0)
 
 
 class ControlEntities(BaseModel):

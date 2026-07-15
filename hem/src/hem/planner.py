@@ -128,6 +128,7 @@ class Planner:
             load=load_kw,
             soc0_kwh=battery.soc_frac * self._battery_params.capacity_kwh,
             reserve_kwh=self._spike_reserve(sell_raw, grid, now, prices),
+            max_discharge_kw_step=self._discharge_caps(len(grid), prices.live_spike),
         )
         cov = {
             "buy": round(coverage(prices.buy, grid), 3),
@@ -149,6 +150,18 @@ class Planner:
             price_forecast_end=min(prices.buy.end, prices.sell.end),
             coverage=cov,
         )
+
+    def _discharge_caps(self, steps: int, live_spike: bool) -> np.ndarray | None:
+        """Raise the discharge cap for the CURRENT interval only, and only
+        while the spike sensor confirms a spike — everyday operation keeps the
+        wear-conscious battery.max_discharge_kw."""
+        spike_kw = self._settings.spike.discharge_kw
+        if not live_spike or spike_kw <= self._battery_params.max_discharge_kw:
+            return None
+        caps = np.full(steps, self._battery_params.max_discharge_kw)
+        caps[0] = spike_kw
+        log.info("confirmed spike: step-0 discharge cap raised to %.1f kW", spike_kw)
+        return caps
 
     def _haircut_sell(self, sell: np.ndarray, grid: TimeGrid, now: datetime) -> np.ndarray:
         """Discount above-median sell prices beyond HAIRCUT_START toward the
@@ -208,6 +221,7 @@ class Planner:
         plan = solution_to_plan(solution, data.grid, data.inputs, computed_at=now)
         if solution.status.endswith("(hysteresis)"):
             plan.solver_status = solution.status
+        plan.live_spike = data.prices.live_spike
         plan = self._live_spike_guard(plan, data)
         return plan
 

@@ -96,3 +96,6 @@ class Plan:
     solver_status: str
     solve_ms: float
     computed_at: datetime
+    # True when the plan was computed during a confirmed price spike — the
+    # executor may then honor the raised spike discharge cap.
+    live_spike: bool = False

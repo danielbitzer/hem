@@ -71,7 +71,7 @@ class SungrowExecutor:
     async def apply(self, plan: Plan) -> None:
         step0 = plan.intervals[0]
         action = step0.action
-        power_kw = self._clamp_power(action, step0.power_kw)
+        power_kw = self._clamp_power(action, step0.power_kw, plan.live_spike)
         desired = (action, round(power_kw, 2))
 
         if desired == self._last_applied:
@@ -107,12 +107,16 @@ class SungrowExecutor:
             )
         self._last_applied = desired
 
-    def _clamp_power(self, action: Action, power_kw: float) -> float:
+    def _clamp_power(self, action: Action, power_kw: float, live_spike: bool) -> float:
         b = self._settings.battery
         if action == Action.CHARGE:
             return min(abs(power_kw), b.max_charge_kw)
         if action == Action.DISCHARGE:
-            return -min(abs(power_kw), b.max_discharge_kw)
+            cap = b.max_discharge_kw
+            if live_spike:
+                # confirmed spike: the raised cap is allowed (0 = disabled)
+                cap = max(cap, self._settings.spike.discharge_kw)
+            return -min(abs(power_kw), cap)
         return 0.0
 
     async def _set_self_consumption(self) -> None:

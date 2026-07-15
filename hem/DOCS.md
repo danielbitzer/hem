@@ -43,6 +43,13 @@ heating/cooling load when the forecast temperature crosses a threshold.
 When Amber flags a potential price spike within `lookahead_hours`, HEM softly reserves
 `reserve_kwh` in the battery so it can sell into the spike if it confirms.
 
+`discharge_kw` optionally raises the discharge cap **only while the spike binary
+sensor confirms a spike, and only for the current interval** — everyday operation
+keeps the wear-conscious `battery.max_discharge_kw`. Spikes are rare enough that
+a few full-power hours add negligible cell wear while capturing peak revenue.
+Set it to your inverter's true limit (0 disables). Note the extra power only
+reaches the grid if `grid.export_limit_kw` allows it.
+
 ## Published sensors
 
 | Entity | Meaning |

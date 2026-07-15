@@ -64,6 +64,7 @@ options:
     reserve_kwh: 6.0
     high_price_threshold: 1.0
     reserve_penalty_per_kwh: 0.5
+    discharge_kw: 0.0
   control:
     mode: dry_run
     max_writes_per_hour: 12
@@ -115,6 +116,7 @@ schema:
     reserve_kwh: float(0,200)
     high_price_threshold: float(0,20)
     reserve_penalty_per_kwh: float(0,20)
+    discharge_kw: float(0,100)
   control:
     mode: list(dry_run|active)
     max_writes_per_hour: int(1,60)
