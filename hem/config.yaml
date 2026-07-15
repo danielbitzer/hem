@@ -35,7 +35,7 @@ options:
     soc_max: 1.0
     wear_cost_per_kwh: 0.04
     allow_grid_charge: true
-    power_convention: charge_positive
+    power_convention: charge_negative
   grid:
     import_limit_kw: 15.0
     export_limit_kw: 5.0

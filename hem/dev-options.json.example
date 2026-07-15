@@ -13,7 +13,8 @@
   "battery": {
     "capacity_kwh": 12.8,
     "max_charge_kw": 5.0,
-    "max_discharge_kw": 5.0
+    "max_discharge_kw": 5.0,
+    "power_convention": "charge_negative"
   },
   "grid": {
     "import_limit_kw": 15.0,

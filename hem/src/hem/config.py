@@ -109,9 +109,11 @@ class Battery(BaseModel):
     soc_max: float = Field(default=1.0, ge=0, le=1)
     wear_cost_per_kwh: float = Field(default=0.04, ge=0)
     allow_grid_charge: bool = True
-    # Sign of the battery power sensor: charge_positive means the sensor reads
-    # positive while charging (HEM's internal convention); charge_negative flips it.
-    power_convention: Literal["charge_positive", "charge_negative"] = "charge_positive"
+    # Sign of the battery power sensor. The mkaiser Sungrow package reports
+    # positive while DISCHARGING (confirmed on Dan's install), so
+    # charge_negative is the default; HEM's internal convention is positive =
+    # charging. Set charge_positive if your sensor reads the other way.
+    power_convention: Literal["charge_positive", "charge_negative"] = "charge_negative"
 
     @model_validator(mode="after")
     def _soc_bounds_ordered(self) -> Self:
