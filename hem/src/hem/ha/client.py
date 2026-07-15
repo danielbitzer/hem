@@ -7,6 +7,7 @@ long-lived token (dev) — the difference is entirely in the HaConnection it's g
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from types import TracebackType
@@ -119,6 +120,44 @@ class HaClient:
             resp.raise_for_status()
             body = await resp.json()
         return body["service_response"] if return_response else body
+
+
+    async def watch_states(
+        self,
+        entity_ids: set[str],
+        on_change: Callable[[str, str], None],
+    ) -> None:
+        """Subscribe to state_changed events over WebSocket and invoke
+        on_change(entity_id, new_state) for the given entities.
+
+        Runs until the connection drops (then raises) — callers wrap this in
+        a reconnect loop. The 5-min poll cycle continues regardless, so this
+        is a latency optimization, not a correctness requirement.
+        """
+        async with self.session.ws_connect(self._conn.ws_url, heartbeat=30) as ws:
+            first = await ws.receive_json()
+            if first.get("type") != "auth_required":
+                raise RuntimeError(f"unexpected WS greeting: {first.get('type')}")
+            await ws.send_json({"type": "auth", "access_token": self._conn.token})
+            auth = await ws.receive_json()
+            if auth.get("type") != "auth_ok":
+                raise RuntimeError(f"WebSocket auth failed: {auth}")
+            await ws.send_json(
+                {"id": 1, "type": "subscribe_events", "event_type": "state_changed"}
+            )
+            log.info("watching %d entities for state changes", len(entity_ids))
+            async for msg in ws:
+                if msg.type != aiohttp.WSMsgType.TEXT:
+                    break
+                payload = msg.json()
+                if payload.get("type") != "event":
+                    continue
+                data = payload.get("event", {}).get("data", {})
+                entity_id = data.get("entity_id")
+                new_state = (data.get("new_state") or {}).get("state")
+                if entity_id in entity_ids and new_state is not None:
+                    on_change(entity_id, new_state)
+        raise ConnectionError("WebSocket connection closed")
 
 
 def _parse_state(data: dict[str, Any]) -> State:

@@ -29,6 +29,22 @@ def series_from_json(data: dict[str, Any]) -> Series:
     )
 
 
+def cycle_inputs_to_json(data: Any) -> dict[str, Any]:
+    """Serialize a planner CycleData's normalized inputs for backtesting."""
+    grid_starts = [s.start.isoformat() for s in data.grid.steps]
+    return {
+        "prices": prices_to_json(data.prices),
+        "grid_starts": grid_starts,
+        "dt_hours": [float(v) for v in data.inputs.dt_hours],
+        "buy": [float(v) for v in data.inputs.buy],
+        "sell": [float(v) for v in data.inputs.sell],
+        "pv_kw": [float(v) for v in data.inputs.pv],
+        "load_kw": [float(v) for v in data.inputs.load],
+        "soc_frac": data.battery.soc_frac,
+        "battery_power_kw": data.battery.power_kw,
+    }
+
+
 def prices_to_json(prices: PriceForecast) -> dict[str, Any]:
     return {
         "buy": series_to_json(prices.buy),

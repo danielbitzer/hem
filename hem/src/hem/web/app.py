@@ -1,8 +1,8 @@
 """Ingress web app.
 
-Phase 0: /health for the Supervisor watchdog plus a placeholder page.
-Phase 5 adds the plan/forecast charts and /api endpoints. All URLs must stay
-relative so the page works unchanged behind HA ingress.
+/health for the Supervisor watchdog, /api/plan for the latest plan, and a
+placeholder page (charts arrive in Phase 5). All URLs must stay relative so
+the page works unchanged behind HA ingress.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from hem import __version__
+from hem.models import Plan
 
 HEALTHY_WINDOW = timedelta(minutes=15)
 
@@ -39,8 +40,47 @@ class HealthState:
         return datetime.now(UTC) - ref < HEALTHY_WINDOW
 
 
-def create_app(health: HealthState) -> FastAPI:
+@dataclass
+class AppState:
+    health: HealthState = field(default_factory=HealthState)
+    plan: Plan | None = None
+
+
+def create_app(state: AppState) -> FastAPI:
     app = FastAPI(title="HEM", version=__version__)
+    health = state.health
+
+    @app.get("/api/plan")
+    async def api_plan() -> JSONResponse:
+        if state.plan is None:
+            return JSONResponse({"error": "no plan computed yet"}, status_code=404)
+        plan = state.plan
+        return JSONResponse(
+            {
+                "computed_at": plan.computed_at.isoformat(),
+                "solver_status": plan.solver_status,
+                "solve_ms": plan.solve_ms,
+                "objective_cost": plan.objective_cost,
+                "intervals": [
+                    {
+                        "start": iv.start.isoformat(),
+                        "end": iv.end.isoformat(),
+                        "action": iv.action.value,
+                        "power_kw": iv.power_kw,
+                        "soc_start": iv.soc_start,
+                        "soc_end": iv.soc_end,
+                        "buy": iv.buy,
+                        "sell": iv.sell,
+                        "pv_kw": iv.pv_kw,
+                        "load_kw": iv.load_kw,
+                        "grid_import_kw": iv.grid_import_kw,
+                        "grid_export_kw": iv.grid_export_kw,
+                        "interval_cost": iv.interval_cost,
+                    }
+                    for iv in plan.intervals
+                ],
+            }
+        )
 
     @app.get("/health")
     async def health_endpoint() -> JSONResponse:

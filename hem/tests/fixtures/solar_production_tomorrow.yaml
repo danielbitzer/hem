@@ -2,7 +2,7 @@
 # State derived from wh_period sum (exact live state not captured).
 entity_id: sensor.home_energy_production_tomorrow
 state: "54.64"
-last_updated: "2026-07-15T11:20:05+00:00"
+last_updated: "2026-07-15T11:35:05+00:00"
 attributes:
   watts:
     "2026-07-16T00:00:00+09:30": 0

@@ -3,7 +3,7 @@
 # (no forecast attribute on the state — service call only).
 entity_id: weather.henley_beach_hourly
 state: "clear-night"
-last_updated: "2026-07-15T11:20:05+00:00"
+last_updated: "2026-07-15T11:35:05+00:00"
 attributes:
   temperature: 6.9
   temperature_unit: °C
