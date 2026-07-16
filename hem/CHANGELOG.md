@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.4
+
+- **`hold` replaced by `no_charge`**: the earlier `hold` action froze the
+  battery (forced mode + stop), which wrongly imports instead of covering a
+  load dip while deferring a charge. `no_charge` is self-consumption with
+  charging blocked (Sungrow: max charge power 0), so the battery still serves
+  the house. Blueprint gains `no_charge_actions` and a `restore_actions`
+  sequence (max charge power back to full, run before every branch so the
+  cap can't stick). The reverse case (block discharge to hold the reserve) is
+  deferred to a future `no_discharge` action.
+- Dashboard: setpoint tile shows "—" for every non-forced mode; the mode
+  timeline gains a `no_charge` colour.
+
+
 ## 0.1.3
 
 - Dashboard: new "Planned mode" timeline strip — the horizon colored by

@@ -28,14 +28,15 @@ def classify_action(
       stored energy (forced discharge is the right actuation: a pinned high
       setpoint, not load-following).
     - CHARGE: charging beyond the PV surplus — i.e. buying from the grid.
-    - HOLD: battery deliberately inactive where self-consumption mode WOULD
-      act — PV surplus exported instead of stored (defer charging for a
-      better window), or load imported instead of discharged (save the
-      battery for a better price). Needs a battery-frozen actuation
-      (e.g. Sungrow forced mode + stop), not self-consumption.
-    - IDLE: everything self-consumption-shaped (running the house off the
-      battery, charging from excess PV) — the inverter's native mode does
-      this with second-by-second load tracking a 5-min setpoint can't match.
+    - NO_CHARGE: battery idle while PV surplus is EXPORTED rather than stored —
+      i.e. self-consumption would charge, but the plan defers the charge to a
+      cheaper window. Block charging, still cover load dips.
+    - IDLE: everything else self-consumption-shaped (running the house off the
+      battery, charging from excess PV, or importing to serve load) — the
+      inverter's native mode does this with second-by-second load tracking a
+      5-min setpoint can't match. (The battery-idle-under-import case — hold
+      the reserve while the grid serves load — also lands here for now; a
+      future NO_DISCHARGE action would actuate it distinctly.)
     """
     export_discharge = discharge_kw - max(load_kw - pv_used_kw, 0.0)
     grid_charge = charge_kw - max(pv_used_kw - load_kw, 0.0)
@@ -46,8 +47,8 @@ def classify_action(
     if pv_kw > CURTAIL_TOL_KW and pv_used_kw < pv_kw - CURTAIL_TOL_KW:
         return Action.CURTAIL
     battery_inactive = charge_kw <= POWER_TOL_KW and discharge_kw <= POWER_TOL_KW
-    if battery_inactive and abs(pv_used_kw - load_kw) > POWER_TOL_KW:
-        return Action.HOLD
+    if battery_inactive and pv_used_kw - load_kw > POWER_TOL_KW:
+        return Action.NO_CHARGE  # surplus exported, not stored: defer the charge
     return Action.IDLE
 
 

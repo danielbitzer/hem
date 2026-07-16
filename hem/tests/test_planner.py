@@ -277,7 +277,7 @@ def test_load_serving_discharge_classifies_as_idle():
 
 def test_hysteresis_keeps_near_degenerate_previous_action():
     """Step-0 buy price marginally below the terminal value makes a grid
-    charge worth well under the threshold, so the previous action (hold:
+    charge worth well under the threshold, so the previous action (idle:
     cheap import serves the load, battery waits) is kept."""
     settings = make_settings(
         optimizer={"action_switch_threshold_dollars": 0.05, "forecast_haircut": 0.0}
@@ -285,9 +285,9 @@ def test_hysteresis_keeps_near_degenerate_previous_action():
     planner = offline_planner(settings)
     data = synthetic_cycle_data(settings)
     data.inputs.buy[0] = 0.23  # terminal value is ~0.245: charging gains cents
-    planner.previous_plan = previous_plan_with(Action.HOLD)
+    planner.previous_plan = previous_plan_with(Action.IDLE)
     plan = planner.optimize(data, NOW)
-    assert plan.intervals[0].action == Action.HOLD
+    assert plan.intervals[0].action == Action.IDLE
     assert "hysteresis" in plan.solver_status
 
 

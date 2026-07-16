@@ -32,7 +32,7 @@
              font-size: 13px; }
   .action-charge { color: #2e86de; } .action-discharge { color: #10ac84; }
   .action-idle { color: var(--muted); } .action-curtail { color: #e67e22; }
-  .action-hold { color: #8e44ad; }
+  .action-no_charge { color: #8e44ad; }
 </style>
 </head>
 <body>
@@ -138,11 +138,11 @@ async function refresh() {
   const actionEl = document.querySelector("#t-action");
   actionEl.textContent = step0.action;
   actionEl.className = "v action-" + step0.action;
-  // idle/curtail hand the battery to self-consumption mode: there is no
-  // commanded setpoint, so showing one would be fiction
+  // only forced charge/discharge carry a real commanded setpoint; every other
+  // mode runs under self-consumption, so a kW figure would be fiction
   document.querySelector("#t-power").textContent =
-    (step0.action === "idle" || step0.action === "curtail")
-      ? "—" : step0.power_kw.toFixed(2) + " kW";
+    (step0.action === "charge" || step0.action === "discharge")
+      ? step0.power_kw.toFixed(2) + " kW" : "—";
   const cap = meta.capacity_kwh;
   document.querySelector("#t-soc").textContent = cap
     ? (100 * step0.soc_end / cap).toFixed(0) + "% · " + step0.soc_end.toFixed(1) + " kWh"
@@ -167,7 +167,7 @@ async function refresh() {
   // share a cursor with the datetime line charts.
   const ACTION_COLORS = { charge: "#2e86de", discharge: "#10ac84",
                           idle: dark ? "#5c5c66" : "#c8c8cd",
-                          hold: "#8e44ad", curtail: "#e67e22" };
+                          no_charge: "#8e44ad", curtail: "#e67e22" };
   const segments = [];
   for (const x of iv) {
     const startMs = new Date(x.start).getTime(), endMs = new Date(x.end).getTime();

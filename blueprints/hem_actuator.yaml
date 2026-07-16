@@ -5,31 +5,37 @@
 # three action sequences for your hardware (plus two optional ones for
 # curtailment):
 #
-#   charge_actions     — put the inverter into forced charge at `power_w` W
-#   discharge_actions  — forced discharge at `power_w` W
-#   idle_actions       — return to normal/self-consumption behaviour
-#   hold_actions       — (optional) freeze the battery while PV exports /
-#                        load imports (e.g. Sungrow: forced mode + stop);
-#                        HEM publishes "hold" to defer charging until a
-#                        better window or save charge for a better price
-#   curtail_actions    — (optional) cap export/PV for negative feed-in;
-#                        runs AFTER idle_actions puts the battery to normal
-#   uncurtail_actions  — (optional) restore your normal export limit; runs
-#                        before every non-curtail branch (idempotent), so
-#                        leaving curtailment — or the failsafe firing —
-#                        always lifts the cap
+#   charge_actions        — put the inverter into forced charge at `power_w` W
+#   discharge_actions     — forced discharge at `power_w` W
+#   idle_actions          — return to normal/self-consumption behaviour
+#   no_charge_actions     — (optional) self-consumption but battery may NOT
+#                           charge (Sungrow: self-consumption + max charge
+#                           power 0). HEM publishes "no_charge" to defer
+#                           storing PV to a cheaper window while the battery
+#                           still covers load dips.
+#   restore_actions       — (optional) battery max charge power back to full;
+#                           runs first, before every branch, so a lingering 0
+#                           from no_charge can't cap a later charge/idle.
+#                           Required if you use no_charge.
+#   curtail_actions       — (optional) cap export/PV for negative feed-in;
+#                           runs AFTER idle_actions puts the battery to normal
+#   uncurtail_actions     — (optional) restore your normal export limit; runs
+#                           before every non-curtail branch (idempotent), so
+#                           leaving curtailment — or the failsafe firing —
+#                           always lifts the cap
 #
-# Leave the optional inputs empty and "hold"/"curtail" simply behave as idle.
+# Leave the optional inputs empty and those actions simply behave as idle.
 #
 # Inside your sequences these variables are available:
 #   power_kw  — signed battery setpoint (+charge / −discharge), float
 #   power_w   — magnitude in watts (int), handy for number.set_value
-#   action    — "charge" | "discharge" | "idle" | "hold" | "curtail"
+#   action    — "charge" | "discharge" | "idle" | "no_charge" | "curtail"
 #
 # Actions are grid-coupled: "charge" = charging FROM THE GRID, "discharge" =
 # exporting stored energy TO THE GRID. Battery-serves-the-house and
 # charge-from-PV-surplus arrive as "idle" — your inverter's normal
 # self-consumption mode already does those better than a forced setpoint.
+# "no_charge" is self-consumption with charging blocked.
 #
 # SAFETY, built in: every run first checks HEM's heartbeat. If the add-on is
 # dead/stale (or reports degraded), uncurtail + idle actions run instead — so
@@ -111,13 +117,13 @@ blueprint:
         failsafe when HEM is stale or degraded — keep it simple and robust.
       selector:
         action:
-    hold_actions:
-      name: Hold actions (optional)
+    no_charge_actions:
+      name: No-charge actions (optional)
       description: >-
-        Freeze the battery while PV exports or load imports (Sungrow: forced
-        mode with the Stop command). HEM publishes "hold" to defer charging
-        for a better window or save stored energy for a better price — a job
-        self-consumption mode cannot do. Leave empty to treat hold as idle.
+        Self-consumption, but stop the battery CHARGING — it still covers load
+        dips (Sungrow: self-consumption mode + battery max charge power 0).
+        HEM publishes "no_charge" to defer storing PV to a cheaper window.
+        Leave empty to treat no_charge as idle.
       default: []
       selector:
         action:
@@ -136,6 +142,16 @@ blueprint:
         Restore your normal export limit. Runs before every charge,
         discharge, idle, and failsafe branch — must be idempotent. Required
         if you set curtail actions, else curtailment would stick.
+      default: []
+      selector:
+        action:
+    restore_actions:
+      name: Restore battery-limit actions (optional)
+      description: >-
+        Return the battery max charge power to full (your battery's rating in
+        watts). Runs first, before every branch, so a lingering 0 from
+        no_charge can't cap a later charge or self-consumption. Required if
+        you use no_charge; must be idempotent (guard the write).
       default: []
       selector:
         action:
@@ -197,6 +213,10 @@ conditions:
       {{ trigger.platform != 'time_pattern' or not hem_alive or not grid_connected }}
 
 actions:
+  # Always undo the sticky battery-limit override first: no_charge sets max
+  # charge power to 0, which would otherwise cap a later charge or idle. A
+  # guarded restore is a no-op when limits are already full.
+  - sequence: !input restore_actions
   - choose:
       - conditions: "{{ action == 'charge' }}"
         sequence:
@@ -206,13 +226,13 @@ actions:
         sequence:
           - sequence: !input uncurtail_actions
           - sequence: !input discharge_actions
-      - conditions: "{{ action == 'hold' }}"
+      - conditions: "{{ action == 'no_charge' }}"
         sequence:
-          # idle first as the safe baseline (an empty hold input must never
-          # leave a previous forced mode running), then freeze the battery
+          # idle first as the safe baseline (an empty input must never leave a
+          # previous forced mode running), then block charging
           - sequence: !input uncurtail_actions
           - sequence: !input idle_actions
-          - sequence: !input hold_actions
+          - sequence: !input no_charge_actions
       - conditions: "{{ action == 'curtail' }}"
         sequence:
           # battery to normal first, then cap export — with empty curtail

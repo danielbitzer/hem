@@ -71,11 +71,13 @@ class Action(StrEnum):
     CHARGE = "charge"  # from the grid
     DISCHARGE = "discharge"  # exporting stored energy
     IDLE = "idle"  # self-consumption territory
-    # battery deliberately inactive while the grid covers the difference:
-    # PV surplus exported instead of stored (defer charging), or load
-    # imported instead of discharging (defer discharge). Self-consumption
-    # mode would act here; the plan says don't.
-    HOLD = "hold"
+    # Battery idle where self-consumption WOULD charge: PV surplus exported
+    # instead of stored, to defer the charge to a cheaper window. Block
+    # charging but still let the battery cover a load dip.
+    # Actuate: self-consumption + battery max-charge-power 0.
+    # (The mirror case — block discharging to hold the reserve under load — is
+    # a possible future NO_DISCHARGE action; for now it stays IDLE.)
+    NO_CHARGE = "no_charge"
     CURTAIL = "curtail"
 
 

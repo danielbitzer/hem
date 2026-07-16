@@ -215,8 +215,10 @@ def test_classify_action_grid_coupled_semantics():
         ((5.0, 0.0, 2.0, 2.0, 1.0), Action.CHARGE),
         # spilling PV on purpose (negative feed-in)
         ((0.0, 0.0, 5.0, 1.0, 1.0), Action.CURTAIL),
-        # load imported while the battery deliberately rests: hold
-        ((0.0, 0.0, 0.0, 0.0, 0.5), Action.HOLD),
+        # battery flat while PV surplus is exported, not stored: defer charge
+        ((0.0, 0.0, 5.0, 5.0, 2.0), Action.NO_CHARGE),
+        # battery flat while load imports (reserve held): idle for now
+        ((0.0, 0.0, 0.0, 0.0, 0.5), Action.IDLE),
         # nothing flowing at all
         ((0.0, 0.0, 0.0, 0.0, 0.0), Action.IDLE),
     ]
@@ -224,22 +226,10 @@ def test_classify_action_grid_coupled_semantics():
         assert classify_action(*args) == expected, args
 
 
-def test_classify_hold_defers_battery_action():
-    from hem.models import Action
-    from hem.optimizer.result import classify_action
-
-    # battery flat while PV surplus exports: defer charging -> HOLD
-    assert classify_action(0.0, 0.0, 5.0, 5.0, 2.0) == Action.HOLD
-    # battery flat while load imports: save the charge -> HOLD
-    assert classify_action(0.0, 0.0, 0.0, 0.0, 0.9) == Action.HOLD
-    # nothing flowing at all: plain idle
-    assert classify_action(0.0, 0.0, 0.0, 0.0, 0.0) == Action.IDLE
-
-
 def test_scenario_defer_charge_to_cheaper_window():
     """Dan's live morning (2026-07-17): good feed-in now, worthless feed-in
     at midday -> export the morning PV, charge the battery later. Step 0
-    must classify HOLD (self-consumption mode would charge immediately)."""
+    must classify NO_CHARGE (self-consumption mode would charge immediately)."""
     from hem.models import Action
     from hem.optimizer.result import classify_action
 
@@ -260,14 +250,17 @@ def test_scenario_defer_charge_to_cheaper_window():
         float(sol.pv_used_kw[0]),
         float(inputs.load[0]),
     )
-    assert step0 == Action.HOLD  # exporting at 0.28, not storing
+    assert step0 == Action.NO_CHARGE  # exporting at 0.28, not storing
     # the charge happens in the worthless-feed-in window instead
     assert float(np.max(sol.charge_kw[6:])) > 1.0
     assert float(np.max(sol.charge_kw[:6])) < 0.05
 
 
-def test_pin_hold_freezes_battery():
-    inputs = make_inputs(T=6, buy=0.10, sell=0.05, soc0=6.4)  # cheap: would charge
-    sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.25), pin_step0="hold")
-    assert float(sol.charge_kw[0]) == pytest.approx(0.0, abs=1e-6)
-    assert float(sol.discharge_kw[0]) == pytest.approx(0.0, abs=1e-6)
+def test_pin_no_charge_blocks_charging_allows_discharge():
+    # expensive import + cheap stored energy: serving load from the battery is
+    # optimal. Pinning no_charge must forbid charging yet still permit that
+    # discharge (unlike a battery-frozen pin).
+    inputs = make_inputs(T=6, buy=0.40, sell=0.05, pv=0.0, load=2.0, soc0=6.4)
+    sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.05), pin_step0="no_charge")
+    assert float(sol.charge_kw[0]) == pytest.approx(0.0, abs=1e-6)  # no charging
+    assert float(sol.discharge_kw[0]) > 0.0  # serving load is still allowed

@@ -167,16 +167,17 @@ def solve(
     ]
     if not battery.allow_grid_charge:
         constraints.append(pc <= pv_u)
+    # The self-consumption envelope: charge from PV only, export only PV
+    # leftovers (no battery export); serving load from the battery is free.
+    self_consumption = [pc[0] <= pv_u[0], ge[0] <= pv_u[0] - pc[0]]
     if pin_step0 == "charge":
         constraints += [pd[0] == 0, pc[0] >= 0.01]
     elif pin_step0 == "discharge":
         constraints += [pc[0] == 0, pd[0] >= 0.01]
-    elif pin_step0 == "hold":
-        constraints += [pc[0] == 0, pd[0] == 0]  # battery frozen
+    elif pin_step0 == "no_charge":
+        constraints += [*self_consumption, pc[0] == 0]  # block charging
     elif pin_step0 in ("idle", "curtail"):
-        # self-consumption envelope: charge from PV only, export PV leftovers
-        # only (no battery export); serving load from the battery stays free
-        constraints += [pc[0] <= pv_u[0], ge[0] <= pv_u[0] - pc[0]]
+        constraints += self_consumption
 
     cost = (
         cp.sum(cp.multiply(buy, cp.multiply(gi, dt)))

@@ -115,7 +115,7 @@ reaches the grid if `grid.export_limit_kw` allows it.
 | Entity | Meaning |
 |---|---|
 | `sensor.hem_status` | `ok` / `degraded`; heartbeat with solve stats and `load_forecast` |
-| `sensor.hem_action` | recommended action now: charge / discharge / idle / curtail (carries `power_kw`/`power_w` attributes, atomic with the action) |
+| `sensor.hem_action` | recommended action now: charge / discharge / idle / no_charge / curtail (carries `power_kw`/`power_w` attributes, atomic with the action) |
 
 Actions are **grid-coupled**: `charge` means charging *from the grid*, and
 `discharge` means exporting stored energy *to the grid* — the moves your
@@ -124,12 +124,20 @@ house off the battery and soaking up PV surplus both publish `idle`, because
 self-consumption mode already does those jobs with second-by-second load
 tracking that a 5-minute forced setpoint can't match.
 
-`hold` is the opposite of idle: the battery must stay **inactive** where
-self-consumption mode would act — morning PV exported instead of stored
-(deferring the charge to a lower-value window), or load imported instead of
-discharged (saving the charge for a better price). Actuate it by freezing
-the battery (Sungrow: forced mode + Stop command); without a hold sequence
-configured, the blueprint falls back to idle and the deferral is lost.
+`no_charge` is self-consumption with **charging blocked**: the plan defers
+storing PV to a cheaper window (morning surplus exported at a good price now,
+the free midday PV stored later) while the battery still covers a load dip.
+Sungrow: leave self-consumption mode on and set the **battery max charge
+power to 0** (freezing the battery outright with forced mode + Stop is wrong —
+it would import instead of covering the dip). Because that limit is sticky,
+also configure a **restore** sequence that puts max charge power back to full;
+it runs before every other branch so a later charge or idle isn't left capped.
+Without a no_charge sequence the blueprint falls back to idle and the deferral
+is lost.
+
+> The mirror case — block *discharging* to hold the spike reserve while the
+> grid serves the load — currently actuates as plain idle (the battery may
+> discharge to load). A future `no_discharge` action will handle it distinctly.
 | `sensor.hem_power_setpoint` | recommended battery power, kW (+charge / −discharge) |
 | `sensor.hem_soc_target` | planned SoC at end of the current interval |
 | `sensor.hem_horizon_cost` | expected net cost ($) over the horizon |
@@ -213,14 +221,18 @@ option strings against your install — they vary between package versions):
   target: {entity_id: select.sungrow_ems_mode}
   data: {option: "Self-consumption mode (default)"}
 
-# hold_actions (optional) — freeze the battery (defer charging / save charge)
-# while PV exports or the grid serves the load
-- action: select.select_option
-  target: {entity_id: select.sungrow_battery_forced_charge_discharge_cmd}
-  data: {option: "Stop (default)"}
-- action: select.select_option
-  target: {entity_id: select.sungrow_ems_mode}
-  data: {option: "Forced mode"}
+# no_charge_actions (optional) — self-consumption with charging blocked; the
+# blueprint runs idle_actions first, so EMS mode is already self-consumption
+- action: number.set_value
+  target: {entity_id: number.sungrow_battery_max_charge_power}
+  data: {value: 0}
+
+# restore_actions (optional, required with no_charge) — max charge power back
+# to full (your battery's rating); runs before every branch so no_charge's 0
+# can't cap a later charge or idle
+- action: number.set_value
+  target: {entity_id: number.sungrow_battery_max_charge_power}
+  data: {value: 12000}
 
 # curtail_actions (optional) — cap export while feed-in is negative; the
 # blueprint runs idle_actions first, so the battery is already back to normal
