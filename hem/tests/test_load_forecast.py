@@ -178,8 +178,9 @@ def test_fit_recovers_cooling_slope_and_predicts_forecast_temps():
     assert model.cool_kw_per_deg == pytest.approx(COOL_SLOPE)
     assert model.heat_kw_per_deg == pytest.approx(0.0)
     # weekday bucket: unbiased at bucket-typical temp, tracks forecast deviation
+    # (26°C stays within the observed range, clear of the max_kw cap)
     assert model.base[0][10] == pytest.approx(0.64)
-    assert model.predict(0, 10, 30.0) == pytest.approx(BASE_KW + COOL_SLOPE * 8)
+    assert model.predict(0, 10, 26.0) == pytest.approx(BASE_KW + COOL_SLOPE * 4)
     assert model.predict(0, 10, 20.0) == pytest.approx(BASE_KW)
     assert model.predict(0, 10, None) == pytest.approx(0.64)  # no temps -> bucket mean
 
@@ -203,8 +204,48 @@ def test_fit_window_capped_to_temperature_overlap():
     assert model.base[0][10] == pytest.approx(2.0)
 
 
+def test_fit_drops_implausible_temperature_response():
+    # 5 kW per heating degree is beyond any house: the fit must refuse it
+    # rather than hand the optimizer a triple-digit load forecast
+    records = []
+    for day in range(13, 20):
+        t = 10.0 if (day - 13) % 2 == 0 else 20.0
+        kw = 0.4 + 5.0 * max(15.0 - t, 0.0)
+        records.extend((local(day, h), kw, t) for h in range(24))
+    model = fit_load_model(records, ADELAIDE)
+    assert not model.has_temp_response
+    assert model.heat_kw_per_deg == 0.0
+
+
+def test_predict_never_exceeds_observed_max():
+    model = fit_load_model(synth_records(range(13, 20)), ADELAIDE)
+    observed_max = BASE_KW + COOL_SLOPE * 6  # hottest synthetic day
+    assert model.max_kw == pytest.approx(observed_max)
+    # a 60°C forecast would extrapolate to ~4 kW; the cap holds it at max seen
+    assert model.predict(0, 10, 60.0) == pytest.approx(observed_max)
+
+
 def stat_rows(values: list[tuple[datetime, float]]) -> list[dict]:
     return [{"start": int(ts.timestamp() * 1000), "mean": v} for ts, v in values]
+
+
+async def test_lts_unit_mislabeled_as_kw_is_autocorrected():
+    # Dan's live failure: statistics metadata claims kW but the values are
+    # watt-magnitude (mkaiser load_power). Median >> any real house -> the
+    # values must be treated as W, not taken at face value.
+    fake = FakeHa()
+    fake.statistics_meta = {"sensor.load_power": "kW"}
+    records = synth_records(range(13, 20))
+    fake.statistics = {
+        "sensor.load_power": stat_rows([(ts, kw * 1000) for ts, kw, _ in records]),
+    }
+    async with fake_ha_client(fake) as client:
+        fc = HistoryLoadForecaster(client, "sensor.load_power", ADELAIDE)
+        await fc.refresh(datetime(2026, 7, 20, 0, 0, tzinfo=UTC))
+        assert fc.status == "learned"
+        grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)
+        out = fc.forecast(grid, None)
+    assert np.all(out < 2.0)  # kW-scale, not the 400+ "kW" the label implied
 
 
 async def test_lts_learning_with_temperature_response():
@@ -226,10 +267,10 @@ async def test_lts_learning_with_temperature_response():
         assert fc.status == "learned"
         assert len(fake.history_requests) == 0  # LTS path, no raw history needed
         grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)
-        hot = fc.forecast(grid, np.array([30.0, 30.0]))
+        hot = fc.forecast(grid, np.array([26.0, 26.0]))
         mild = fc.forecast(grid, np.array([20.0, 20.0]))
     # forecast temps drive the learned response
-    assert np.allclose(hot, BASE_KW + COOL_SLOPE * 8)
+    assert np.allclose(hot, BASE_KW + COOL_SLOPE * 4)
     assert np.allclose(mild, BASE_KW)
 
 

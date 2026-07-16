@@ -175,6 +175,18 @@ class Planner:
         pv_kw = resample_mean(pv, grid)
         temps = resample_previous(temps_series, grid) if temps_series else None
         load_kw = self._load_forecaster.forecast(grid, temps)
+        # Feasibility guard: load beyond the import limit can't be served in
+        # the power balance (battery may be empty, PV may be zero) and turns
+        # the MILP infeasible. A real house can't exceed its breaker anyway —
+        # a forecast that does means bad sensor data, not bad planning.
+        if np.any(load_kw > self._grid_params.import_limit_kw):
+            log.warning(
+                "load forecast peaks at %.1f kW, above the %.1f kW import "
+                "limit; clamping — check the load sensor's units/data",
+                float(np.max(load_kw)),
+                self._grid_params.import_limit_kw,
+            )
+            load_kw = np.minimum(load_kw, self._grid_params.import_limit_kw)
 
         inputs = OptimizerInputs(
             dt_hours=grid.dt_hours,

@@ -133,6 +133,20 @@ async def test_full_cycle_against_fixtures():
     assert any(iv.action == Action.DISCHARGE for iv in plan.intervals)
 
 
+async def test_absurd_load_forecast_is_clamped_not_infeasible():
+    """Live failure 2026-07-16: a mislabeled load sensor produced a ~250 kW
+    forecast and the MILP came back infeasible. Bad load data must clamp to
+    the import limit and still solve."""
+    settings = make_settings()
+    fake = full_fake_ha()
+    async with fake_ha_client(fake) as client:
+        planner = make_planner(client, settings)
+        planner._load_forecaster = FixedLoadForecaster(250.0)
+        plan = await planner.run_cycle(NOW)
+    assert plan.solver_status in ("optimal", "optimal_inaccurate")
+    assert plan.intervals[0].load_kw == pytest.approx(settings.grid.import_limit_kw)
+
+
 async def test_old_battery_report_is_tolerated():
     """mkaiser battery sensors only report on value change, so an old
     last_reported must NOT abort the cycle (idle battery == constant SoC).

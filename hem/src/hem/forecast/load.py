@@ -52,6 +52,16 @@ MIN_TEMP_HOURS = 72
 MIN_STATS_HOURS = 24
 REFRESH_INTERVAL = timedelta(hours=24)
 RETRY_INTERVAL = timedelta(minutes=30)
+# Unit plausibility: no house has a median hourly load above this, so a
+# median beyond it means the sensor's declared unit lies (e.g. the mkaiser
+# package's load_power declares kW while emitting watt-magnitude values —
+# seen live on Dan's install, where it produced a 35 kW/°C heating slope and
+# an infeasible MILP).
+MAX_PLAUSIBLE_MEDIAN_KW = 50.0
+# Physics plausibility for the fitted temperature response: whole-house
+# heating/cooling beyond this per degree means the fit chased an artifact —
+# drop the response rather than forecast nonsense.
+MAX_SLOPE_KW_PER_DEG = 2.0
 
 _UNIT_TO_KW = {"W": 0.001, "kW": 1.0, "w": 0.001, "kw": 1.0}
 
@@ -110,6 +120,9 @@ class LoadModel:
     balance_cool_c: float = 22.0
     balance_heat_c: float = 15.0
     has_temp_response: bool = False
+    # highest hourly load ever observed — predictions never extrapolate past
+    # it, no matter what the forecast temperature says
+    max_kw: float = float("inf")
 
     @property
     def known_buckets(self) -> int:
@@ -130,7 +143,7 @@ class LoadModel:
             hdh = max(self.balance_heat_c - temp_c, 0.0)
             value += self.cool_kw_per_deg * (cdh - self.cdh_mean[weekend][hour])
             value += self.heat_kw_per_deg * (hdh - self.hdh_mean[weekend][hour])
-        return max(value, 0.0)
+        return min(max(value, 0.0), self.max_kw)
 
 
 def learn_hourly_profile(
@@ -222,6 +235,7 @@ def fit_load_model(
             joint_days,
         )
 
+    max_kw = max((max(r[1], 0.0) for r in rows), default=0.0)
     count = np.zeros((2, 24))
     load_sum = np.zeros((2, 24))
     cdh_sum = np.zeros((2, 24))
@@ -248,6 +262,7 @@ def fit_load_model(
         hdh_mean=hdh_sum / safe,
         balance_cool_c=balance_cool_c,
         balance_heat_c=balance_heat_c,
+        max_kw=max_kw,
     )
     if not use_temp:
         return model
@@ -261,13 +276,44 @@ def fit_load_model(
         dh.append(max(balance_heat_c - temp_c, 0.0) - model.hdh_mean[weekend][hour])
         dy.append(max(load_kw, 0.0) - base_arr[weekend][hour])
     if dy:
-        model.cool_kw_per_deg, model.heat_kw_per_deg = _fit_slopes(
-            np.array(dc), np.array(dh), np.array(dy)
-        )
-        # counts as a response even if the house turned out temperature-
-        # insensitive (slopes 0): the data spoke, the answer was "flat"
-        model.has_temp_response = True
+        cool, heat = _fit_slopes(np.array(dc), np.array(dh), np.array(dy))
+        if max(cool, heat) > MAX_SLOPE_KW_PER_DEG:
+            log.warning(
+                "fitted temperature response is implausible (%.2f kW/°C cooling, "
+                "%.2f kW/°C heating > %.1f max); dropping it — check the load "
+                "sensor's units and data",
+                cool,
+                heat,
+                MAX_SLOPE_KW_PER_DEG,
+            )
+        else:
+            model.cool_kw_per_deg, model.heat_kw_per_deg = cool, heat
+            # counts as a response even if the house turned out temperature-
+            # insensitive (slopes 0): the data spoke, the answer was "flat"
+            model.has_temp_response = True
     return model
+
+
+def _unit_correction(loads_kw: list[float], entity_id: str, source: str) -> float:
+    """Extra scale factor when the declared unit is implausible.
+
+    Trust the data over the label: a median hourly load beyond any real house
+    means watt-magnitude values declared as kW (statistics metadata keeps the
+    unit from when the sensor first recorded, so it can lie after a unit
+    change). Without this, a mislabeled sensor inflates the load forecast
+    1000x and makes the MILP infeasible.
+    """
+    median = float(np.median(loads_kw)) if loads_kw else 0.0
+    if median > MAX_PLAUSIBLE_MEDIAN_KW:
+        log.warning(
+            "%s %s claims kW but the median value is %.0f — no house draws "
+            "that; treating the values as watts",
+            entity_id,
+            source,
+            median,
+        )
+        return 0.001
+    return 1.0
 
 
 def _to_celsius(value: float, unit: str | None) -> float | None:
@@ -394,6 +440,8 @@ class HistoryLoadForecaster:
                     "without a temperature response",
                     self._temp_entity_id,
                 )
+        loads = [v * scale for _, v in load_rows]
+        scale *= _unit_correction(loads, self._entity_id, "statistics")
         records = [(ts, v * scale, temps.get(ts)) for ts, v in load_rows]
         return fit_load_model(records, self._tz)
 
@@ -414,8 +462,16 @@ class HistoryLoadForecaster:
                 continue  # unavailable/unknown gaps
         if len(samples) < 2:
             raise ValueError(f"not enough history samples ({len(samples)})")
+        correction = _unit_correction([v for _, v in samples], self._entity_id, "history")
+        if correction != 1.0:
+            samples = [(ts, v * correction) for ts, v in samples]
         base = learn_hourly_profile(samples, self._tz)
-        return LoadModel(base=base, cdh_mean=np.zeros((2, 24)), hdh_mean=np.zeros((2, 24)))
+        return LoadModel(
+            base=base,
+            cdh_mean=np.zeros((2, 24)),
+            hdh_mean=np.zeros((2, 24)),
+            max_kw=max((max(v, 0.0) for _, v in samples), default=0.0),
+        )
 
     def forecast(self, grid: TimeGrid, temps_c: np.ndarray | None) -> np.ndarray:
         if temps_c is not None and len(temps_c) != len(grid):
