@@ -55,7 +55,13 @@
 
 <script>
 const charts = {};
+// Latest mode-strip segments; the tooltip callback reads from here because
+// Apex's own config copy loses the custom `action` field after updateSeries.
+let modeSegments = [];
 const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+// Fixed y-axis label column so every chart's plot area starts at the same x
+// and the datetime axes line up (incl. the label-less mode strip).
+const GUTTER = 56;
 
 function base(id, extra) {
   return Object.assign({
@@ -64,6 +70,7 @@ function base(id, extra) {
              zoom: { enabled: false }, group: "hem" },
     theme: { mode: dark ? "dark" : "light" },
     xaxis: { type: "datetime", labels: { datetimeUTC: false } },
+    yaxis: { labels: { minWidth: GUTTER, maxWidth: GUTTER } },
     tooltip: { x: { format: "ddd HH:mm" } },
     stroke: { width: 2, curve: "stepline" },
     dataLabels: { enabled: false },
@@ -179,26 +186,39 @@ async function refresh() {
                       fillColor: ACTION_COLORS[x.action] || "#8e8e93" });
     }
   }
+  modeSegments = segments;
+  // Pin the strip's x range to the plan's exact span: Apex pads a rangeBar
+  // datetime axis to "nice" hours, which compresses it vs the line charts.
+  const planEndMs = new Date(iv[iv.length - 1].end).getTime();
   render("chart-mode", {
     chart: { id: "mode", height: 110, type: "rangeBar", background: "transparent",
              animations: { enabled: false }, toolbar: { show: false }, zoom: { enabled: false } },
     theme: { mode: dark ? "dark" : "light" },
     plotOptions: { bar: { horizontal: true, barHeight: "55%", rangeBarGroupRows: true } },
-    xaxis: { type: "datetime", labels: { datetimeUTC: false } },
-    yaxis: { labels: { show: false } },
+    xaxis: { type: "datetime", labels: { datetimeUTC: false }, min: t[0], max: planEndMs },
+    // reserve the SAME label gutter as the line charts (empty text) so the
+    // strip's plot area lines up with them; no border/ticks
+    yaxis: { labels: { minWidth: GUTTER, maxWidth: GUTTER, formatter: () => "" },
+             axisBorder: { show: false }, axisTicks: { show: false } },
     grid: { borderColor: dark ? "#2c2c30" : "#e3e3e8" },
     dataLabels: { enabled: false },
     legend: { show: false },
     tooltip: {
-      custom: ({ seriesIndex, dataPointIndex, w }) => {
-        const d = w.config.series[seriesIndex].data[dataPointIndex];
+      followCursor: true,
+      custom: ({ dataPointIndex }) => {
+        const d = modeSegments[dataPointIndex];
+        if (!d) return "";
         const fmt = ms => new Date(ms).toLocaleString(undefined,
           { weekday: "short", hour: "2-digit", minute: "2-digit" });
-        return '<div style="padding:6px 10px"><b>' + d.action + "</b><br>" +
-               fmt(d.y[0]) + " → " + fmt(d.y[1]) + "</div>";
+        return '<div style="padding:6px 10px"><b>' + d.action.replace("_", " ") +
+               "</b><br>" + fmt(d.y[0]) + " → " + fmt(d.y[1]) + "</div>";
       },
     },
   }, [{ name: "mode", data: segments }]);
+  // render() only pushes series after creation; the range must follow each
+  // replan (safe: this chart is not in the sync group, no options leak)
+  charts["chart-mode"].updateOptions(
+    { xaxis: { min: t[0], max: planEndMs } }, false, false);
 
   render("chart-prices", base("prices", {
     colors: ["#e74c3c", "#10ac84"],
@@ -234,13 +254,11 @@ async function refresh() {
     chart: Object.assign(base("soc").chart, { type: "area" }),
   });
   if (cap) {
-    // left axis kWh, right axis % — same linear scale, so the line serves both
-    socOpts.yaxis = [
-      { seriesName: "SoC", min: 0, max: cap, title: { text: "kWh" },
-        labels: { formatter: v => v.toFixed(0) } },
-      { seriesName: "SoC", opposite: true, min: 0, max: 100, title: { text: "%" },
-        labels: { formatter: v => v.toFixed(0) + "%" } },
-    ];
+    // Single kWh axis pinned to capacity, same fixed gutter as every other
+    // chart. A second % axis (even floating) makes this Apex build inset the
+    // plot, so the % lives in the tooltip instead.
+    socOpts.yaxis = { min: 0, max: cap,
+      labels: { formatter: v => v.toFixed(0), minWidth: GUTTER, maxWidth: GUTTER } };
     socOpts.tooltip = Object.assign(socOpts.tooltip || {}, {
       y: { formatter: v => v.toFixed(1) + " kWh · " + (100 * v / cap).toFixed(0) + "%" },
     });
