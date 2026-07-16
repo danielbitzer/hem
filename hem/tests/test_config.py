@@ -30,17 +30,10 @@ def test_load_minimal_options(tmp_path: Path):
     settings = load_settings(write_options(tmp_path, MINIMAL_OPTIONS))
     assert settings.optimizer.horizon_hours == 36
     assert settings.battery.soc_min == 0.10
-    # forecast entities default to the price sensors (amber_express layout)
-    assert settings.entities.buy_forecast == settings.entities.buy_price
-    assert settings.entities.sell_forecast == settings.entities.sell_price
-
-
-def test_explicit_forecast_entities_kept(tmp_path: Path):
+    # a stale forecast-entity key from an older config is ignored, not fatal
     options = json.loads(json.dumps(MINIMAL_OPTIONS))
     options["entities"]["buy_forecast"] = "sensor.amber_general_forecast"
-    settings = load_settings(write_options(tmp_path, options))
-    assert settings.entities.buy_forecast == "sensor.amber_general_forecast"
-    assert settings.entities.sell_forecast == settings.entities.sell_price
+    load_settings(write_options(tmp_path, options))
 
 
 def test_invalid_soc_bounds_rejected(tmp_path: Path):

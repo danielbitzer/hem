@@ -23,8 +23,8 @@ nothing is written to your inverter.
 ### `entities`
 
 Point each option at your entity IDs. Amber Express's forecast attributes live on
-the price sensors themselves, so `buy_forecast`/`sell_forecast` can normally be left
-empty (they default to the price sensors).
+the price sensors themselves, so the two price entities are all HEM needs for
+both live prices and forecasts.
 
 ### `battery`
 

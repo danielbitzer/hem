@@ -61,8 +61,6 @@ schema:
   entities:
     buy_price: str
     sell_price: str
-    buy_forecast: str?
-    sell_forecast: str?
     price_spike: str?
     pv_forecast_today: str
     pv_forecast_tomorrow: str

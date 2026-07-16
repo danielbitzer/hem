@@ -81,8 +81,8 @@ class AmberExpressAdapter:
             else _none()
         )
         buy_state, sell_state, spike_state = await asyncio.gather(
-            self._client.get_state(self._entities.buy_forecast),
-            self._client.get_state(self._entities.sell_forecast),
+            self._client.get_state(self._entities.buy_price),
+            self._client.get_state(self._entities.sell_price),
             spike_task,
         )
         for s in (buy_state, sell_state):

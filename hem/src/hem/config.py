@@ -78,12 +78,10 @@ def resolve_data_dir(env: EnvSettings, supervisor_token: str | None = None) -> P
 
 
 class Entities(BaseModel):
+    # Amber Express price sensors; their `forecast` attribute carries the
+    # price forecast, so no separate forecast entities exist.
     buy_price: str
     sell_price: str
-    # Amber Express forecast attributes live on the price sensors, so these
-    # default to the price sensors; override only for exotic setups.
-    buy_forecast: str = ""
-    sell_forecast: str = ""
     price_spike: str = ""
     pv_forecast_today: str
     pv_forecast_tomorrow: str
@@ -99,14 +97,6 @@ class Entities(BaseModel):
     # Optional; enables the learned temperature response (load vs
     # cooling/heating degrees).
     outdoor_temp: str = ""
-
-    @model_validator(mode="after")
-    def _default_forecast_entities(self) -> Self:
-        if not self.buy_forecast:
-            self.buy_forecast = self.buy_price
-        if not self.sell_forecast:
-            self.sell_forecast = self.sell_price
-        return self
 
 
 class Battery(BaseModel):
