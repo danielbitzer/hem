@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from conftest import FakeHa, fake_ha_client
 
-from hem.config import LoadProfile, TempRule
+from hem.config import LoadProfile
 from hem.forecast.load import (
     BaselineLoadForecaster,
     HistoryLoadForecaster,
@@ -19,10 +19,6 @@ ADELAIDE = ZoneInfo("Australia/Adelaide")
 PROFILE = LoadProfile(
     weekday_kw=[float(h) / 10 for h in range(24)],  # hour h -> h/10 kW (recognizable)
     weekend_kw=[2.0] * 24,
-    temp_rules=[
-        TempRule(when="temp_above", threshold_c=28.0, add_kw=1.5),
-        TempRule(when="temp_below", threshold_c=12.0, add_kw=1.2),
-    ],
 )
 
 
@@ -50,22 +46,18 @@ def test_weekend_profile_selected_by_local_day():
     assert np.allclose(out, 2.0)
 
 
-def test_temp_rules_additive():
+def test_temps_ignored_by_baseline():
+    # profile mode has no temperature sensitivity — that's history+outdoor_temp's job
     grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 2)
     fc = BaselineLoadForecaster(PROFILE, ADELAIDE)
-    temps = np.array([30.0, 20.0, 8.0, 8.0])  # hot, mild, cold, cold
-    out = fc.forecast(grid, temps)
-    base = fc.forecast(grid, None)
-    assert out[0] == pytest.approx(base[0] + 1.5)  # cooling
-    assert out[1] == pytest.approx(base[1])  # no rule
-    assert out[2] == pytest.approx(base[2] + 1.2)  # heating
-    assert out[3] == pytest.approx(base[3] + 1.2)
+    assert np.allclose(fc.forecast(grid, np.array([30.0, 20.0, 8.0, 8.0])), fc.forecast(grid, None))
 
 
 def test_temp_length_mismatch_rejected():
     grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)
+    fc = HistoryLoadForecaster(None, "sensor.load_power", PROFILE, ADELAIDE)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="grid steps"):
-        BaselineLoadForecaster(PROFILE, ADELAIDE).forecast(grid, np.array([20.0]))
+        fc.forecast(grid, np.array([20.0]))
 
 
 # --- history-learned profile ------------------------------------------------
@@ -247,8 +239,7 @@ async def test_lts_learning_with_temperature_response():
         grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)
         hot = fc.forecast(grid, np.array([30.0, 30.0]))
         mild = fc.forecast(grid, np.array([20.0, 20.0]))
-    # forecast temps drive the response; PROFILE's temp_above rule (+1.5 kW
-    # above 28°C) must NOT stack on top of the learned response
+    # forecast temps drive the learned response
     assert np.allclose(hot, BASE_KW + COOL_SLOPE * 8)
     assert np.allclose(mild, BASE_KW)
 

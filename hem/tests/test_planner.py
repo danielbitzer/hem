@@ -37,7 +37,6 @@ SETTINGS_DICT = {
     "load_profile": {
         "weekday_kw": [0.5] * 24,
         "weekend_kw": [0.6] * 24,
-        "temp_rules": [{"when": "temp_below", "threshold_c": 12.0, "add_kw": 1.2}],
     },
 }
 
@@ -114,8 +113,9 @@ async def test_full_cycle_against_fixtures():
     assert plan.intervals[-1].end == NOW + timedelta(hours=36)
     # Step 0 uses the live sensor states, not the forecast attribute
     assert plan.intervals[0].buy == pytest.approx(0.44)
-    # Cold night (6.5C < 12C rule) -> load = 0.5 baseline + 1.2 heating
-    assert plan.intervals[0].load_kw == pytest.approx(1.7)
+    # profile mode: hourly baseline only (temperature sensitivity is
+    # history+outdoor_temp's job)
+    assert plan.intervals[0].load_kw == pytest.approx(0.5)
     # Battery at 72.5%: tomorrow evening's high prices should provoke export at
     # some point in the horizon
     assert any(iv.action == Action.DISCHARGE for iv in plan.intervals)

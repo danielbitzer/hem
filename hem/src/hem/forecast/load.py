@@ -3,7 +3,7 @@
 Two forecasters behind one protocol:
 
 - BaselineLoadForecaster (load_profile.source: profile): a per-hour-of-day
-  baseline (weekday/weekend) from config, plus additive temperature rules.
+  baseline (weekday/weekend) from config.
 - HistoryLoadForecaster (load_profile.source: history): learns from the
   household's actual consumption, refreshed daily. Preferred data source is
   hourly long-term statistics (which survive recorder purging, so the window
@@ -15,9 +15,9 @@ daily learn also fits a temperature response: pooled cooling/heating slopes
 (kW per degree above/below balance temperatures) regressed against each hour
 bucket's deviation from its own average. forecast() then applies the FORECAST
 temperatures to those slopes — so the prediction tracks a heatwave arriving
-after a mild fortnight instead of the trailing average lagging it. When a
-response is learned, config temp_rules are suppressed (the data already
-speaks); otherwise they apply additively as in profile mode.
+after a mild fortnight instead of the trailing average lagging it. This is
+the only temperature sensitivity: there are deliberately no hand-written
+temperature rules to tune (or double count).
 
 The grid is UTC but people live in local time, so the hour-of-day lookup uses
 the configured local timezone (half-hour offsets like Adelaide's +09:30 mean a
@@ -70,21 +70,6 @@ class LoadForecaster(Protocol):
         ...
 
 
-def _apply_temp_rules(
-    out: np.ndarray, profile: LoadProfile, grid: TimeGrid, temps_c: np.ndarray | None
-) -> np.ndarray:
-    if temps_c is None:
-        return out
-    if len(temps_c) != len(grid):
-        raise ValueError(f"temps ({len(temps_c)}) != grid steps ({len(grid)})")
-    for rule in profile.temp_rules:
-        if rule.when == "temp_above":
-            out = out + np.where(temps_c > rule.threshold_c, rule.add_kw, 0.0)
-        else:
-            out = out + np.where(temps_c < rule.threshold_c, rule.add_kw, 0.0)
-    return out
-
-
 def _step_bucket(step_start: datetime, step_end: datetime, tz: ZoneInfo) -> tuple[int, int]:
     """(is_weekend, local hour) for a grid step, keyed by its midpoint."""
     mid = (step_start + (step_end - step_start) / 2).astimezone(tz)
@@ -105,7 +90,7 @@ class BaselineLoadForecaster:
             weekend, hour = _step_bucket(step.start, step.end, self._tz)
             hourly = self._profile.weekend_kw if weekend else self._profile.weekday_kw
             out[i] = hourly[hour]
-        return _apply_temp_rules(out, self._profile, grid, temps_c)
+        return out
 
 
 @dataclass
@@ -259,8 +244,8 @@ def fit_load_model(
         model.cool_kw_per_deg, model.heat_kw_per_deg = _fit_slopes(
             np.array(dc), np.array(dh), np.array(dy)
         )
-        # a fit on real data counts as a response even if the house turned out
-        # temperature-insensitive (slopes 0) — temp_rules stay suppressed
+        # counts as a response even if the house turned out temperature-
+        # insensitive (slopes 0): the data spoke, the answer was "flat"
         model.has_temp_response = True
     return model
 
@@ -400,6 +385,8 @@ class HistoryLoadForecaster:
         return LoadModel(base=base, cdh_mean=np.zeros((2, 24)), hdh_mean=np.zeros((2, 24)))
 
     def forecast(self, grid: TimeGrid, temps_c: np.ndarray | None) -> np.ndarray:
+        if temps_c is not None and len(temps_c) != len(grid):
+            raise ValueError(f"temps ({len(temps_c)}) != grid steps ({len(grid)})")
         model = self._model
         out = np.empty(len(grid))
         for i, step in enumerate(grid.steps):
@@ -410,9 +397,7 @@ class HistoryLoadForecaster:
                 hourly = self._profile.weekend_kw if weekend else self._profile.weekday_kw
                 value = hourly[hour]
             out[i] = value
-        if model is not None and model.has_temp_response:
-            return out  # learned response replaces config temp_rules
-        return _apply_temp_rules(out, self._profile, grid, temps_c)
+        return out
 
 
 def build_load_forecaster(

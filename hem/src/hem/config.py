@@ -94,8 +94,8 @@ class Entities(BaseModel):
     # history — e.g. the mkaiser package's sensor.load_power.
     load_power: str = ""
     # Outdoor temperature sensor with long-term statistics (state_class set).
-    # Optional; with source: history it enables the learned temperature
-    # response (load vs cooling/heating degrees), replacing temp_rules.
+    # Optional; with load_profile.source: history it enables the learned
+    # temperature response (load vs cooling/heating degrees).
     outdoor_temp: str = ""
 
     @model_validator(mode="after")
@@ -135,21 +135,12 @@ class Grid(BaseModel):
     export_limit_kw: float = Field(ge=0)
 
 
-class TempRule(BaseModel):
-    when: Literal["temp_above", "temp_below"]
-    threshold_c: float
-    add_kw: float = Field(ge=0)
-
-
 class LoadProfile(BaseModel):
     weekday_kw: list[float] = Field(min_length=24, max_length=24)
     weekend_kw: list[float] = Field(min_length=24, max_length=24)
-    temp_rules: list[TempRule] = []
-    # history: learn the hourly baseline from recorder history of
-    # entities.load_power (time-weighted hour-of-day averages, weekday/weekend
-    # split); the profile above remains the per-hour fallback. With history,
-    # learned averages already include typical heating/cooling — keep
-    # temp_rules for extreme-day corrections only.
+    # history: learn the hourly baseline (and, with entities.outdoor_temp, a
+    # temperature response) from the household's actual consumption; the
+    # profile above remains the per-hour fallback.
     source: Literal["profile", "history"] = "profile"
     # Learning window. Hourly long-term statistics reach months back; the raw
     # recorder-history fallback is capped by the recorder purge window (~10

@@ -19,10 +19,11 @@ configuration:
   load_profile:
     name: Load profile
     description: >-
-      Hourly baseline load and temperature-dependent rules. Set source to
-      "history" (with entities.load_power) to learn the hourly baseline from
-      your actual consumption instead; the configured hours then act as the
-      fallback for hours with too little data.
+      Hourly baseline load. Set source to "history" (with
+      entities.load_power) to learn the hourly baseline from your actual
+      consumption instead; the configured hours then act as the fallback for
+      hours with too little data. Adding entities.outdoor_temp also learns a
+      temperature response applied to forecast temperatures.
   optimizer:
     name: Optimizer settings
     description: Horizon, solver timeout and behavioral thresholds.

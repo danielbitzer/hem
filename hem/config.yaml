@@ -46,13 +46,6 @@ options:
     weekend_kw:
       [0.4, 0.4, 0.4, 0.4, 0.4, 0.5, 0.6, 0.8, 0.9, 0.8, 0.7, 0.7,
        0.7, 0.7, 0.6, 0.6, 0.7, 0.9, 1.2, 1.2, 1.0, 0.8, 0.6, 0.5]
-    temp_rules:
-      - when: temp_above
-        threshold_c: 28.0
-        add_kw: 1.5
-      - when: temp_below
-        threshold_c: 12.0
-        add_kw: 1.2
   optimizer:
     horizon_hours: 36
     terminal_soc_value: auto
@@ -99,10 +92,6 @@ schema:
       - float(0,50)
     weekend_kw:
       - float(0,50)
-    temp_rules:
-      - when: list(temp_above|temp_below)
-        threshold_c: float(-20,60)
-        add_kw: float(0,50)
     source: list(profile|history)?
     history_days: int(1,365)?
   optimizer:

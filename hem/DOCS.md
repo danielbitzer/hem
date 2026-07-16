@@ -51,8 +51,7 @@ optimizer respects both simultaneously.
 
 ### `load_profile`
 
-24 hourly baseline kW values for weekdays and weekends, plus temperature rules that add
-heating/cooling load when the forecast temperature crosses a threshold.
+24 hourly baseline kW values for weekdays and weekends.
 
 Set `source: history` to **learn the hourly baseline from your actual
 consumption** instead: once a day HEM reads hourly long-term statistics of
@@ -72,10 +71,8 @@ kW your house adds per degree above 22°C (cooling) and below 15°C (heating),
 regressed from the same window. Forecasts then apply the *forecast*
 temperature to those slopes — so a heatwave arriving after a mild fortnight
 raises the load forecast immediately, instead of the trailing average lagging
-the weather. While a response is learned, `temp_rules` are ignored (the data
-already includes your heating/cooling behavior); without `outdoor_temp`, the
-learned averages still include *typical* heating/cooling, so keep `temp_rules`
-for extreme-day corrections only.
+the weather. This is the only temperature sensitivity in the load forecast;
+there are deliberately no manual temperature rules to tune.
 
 ### `optimizer`
 

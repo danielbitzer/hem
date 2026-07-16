@@ -11,7 +11,7 @@ What you'll end up with:
 |---|---|---|
 | Amber Express | Buy/sell prices + Amber's advanced forecast + spike flag | HACS |
 | Open-Meteo Solar Forecast | PV production forecast | HACS |
-| A `weather.*` entity | Hourly temperature forecast (load rules) | Built-in |
+| A `weather.*` entity | Hourly temperature forecast (drives the learned temperature response) | Built-in |
 | Battery integration | SoC %, battery power, (optional) house load | e.g. mkaiser Sungrow |
 | **HEM add-on** | The optimizer + recommendation sensors + dashboard | this repo |
 | Actuator automation | Turns recommendations into inverter control | blueprint, later |
@@ -61,8 +61,9 @@ no advanced-price mode, which is not good enough to optimize against.
 
 Any `weather.*` entity that supports **hourly** forecasts works; the built-in
 Met.no ("Forecast Home") entity does. HEM calls the `weather.get_forecasts`
-service on it. Only temperature is used, and only by the load-profile
-temperature rules — if the entity is unavailable HEM just plans without them.
+service on it. Only temperature is used, and only by the learned temperature
+response of the load forecast (see step 5) — if the entity is unavailable HEM
+just plans without it.
 
 ## 5. Battery and inverter sensors
 
