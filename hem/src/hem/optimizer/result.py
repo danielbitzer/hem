@@ -15,11 +15,28 @@ CURTAIL_TOL_KW = 0.05
 
 
 def classify_action(
-    charge_kw: float, discharge_kw: float, pv_kw: float, pv_used_kw: float
+    charge_kw: float,
+    discharge_kw: float,
+    pv_kw: float,
+    pv_used_kw: float,
+    load_kw: float,
 ) -> Action:
-    if discharge_kw > POWER_TOL_KW:
+    """Grid-coupled semantics: charge/discharge are reserved for battery moves
+    a self-consumption inverter mode would NOT make on its own.
+
+    - DISCHARGE: battery power beyond the house's unmet load — i.e. exporting
+      stored energy (forced discharge is the right actuation: a pinned high
+      setpoint, not load-following).
+    - CHARGE: charging beyond the PV surplus — i.e. buying from the grid.
+    - IDLE: everything self-consumption-shaped (running the house off the
+      battery, charging from excess PV) — the inverter's native mode does
+      this with second-by-second load tracking a 5-min setpoint can't match.
+    """
+    export_discharge = discharge_kw - max(load_kw - pv_used_kw, 0.0)
+    grid_charge = charge_kw - max(pv_used_kw - load_kw, 0.0)
+    if export_discharge > POWER_TOL_KW:
         return Action.DISCHARGE
-    if charge_kw > POWER_TOL_KW:
+    if grid_charge > POWER_TOL_KW:
         return Action.CHARGE
     if pv_kw > CURTAIL_TOL_KW and pv_used_kw < pv_kw - CURTAIL_TOL_KW:
         return Action.CURTAIL
@@ -48,6 +65,7 @@ def solution_to_plan(
                     solution.discharge_kw[i],
                     inputs.pv[i],
                     solution.pv_used_kw[i],
+                    inputs.load[i],
                 ),
                 power_kw=float(net_battery[i]),
                 soc_start=float(solution.soc_kwh[i]),

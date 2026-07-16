@@ -22,6 +22,11 @@
 #   power_w   — magnitude in watts (int), handy for number.set_value
 #   action    — "charge" | "discharge" | "idle" | "curtail"
 #
+# Actions are grid-coupled: "charge" = charging FROM THE GRID, "discharge" =
+# exporting stored energy TO THE GRID. Battery-serves-the-house and
+# charge-from-PV-surplus arrive as "idle" — your inverter's normal
+# self-consumption mode already does those better than a forced setpoint.
+#
 # SAFETY, built in: every run first checks HEM's heartbeat. If the add-on is
 # dead/stale (or reports degraded), uncurtail + idle actions run instead — so
 # a crashed HEM can never leave your inverter stuck in forced mode or capped

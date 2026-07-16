@@ -195,3 +195,28 @@ def test_energy_balance_holds():
     lhs = sol.pv_used_kw + sol.discharge_kw + sol.grid_import_kw
     rhs = inputs.load + sol.charge_kw + sol.grid_export_kw
     assert np.allclose(lhs, rhs, atol=1e-4)
+
+
+def test_classify_action_grid_coupled_semantics():
+    from hem.models import Action
+    from hem.optimizer.result import classify_action
+
+    # (charge, discharge, pv, pv_used, load) -> expected
+    cases = [
+        # battery runs the house at night: self-consumption, not DISCHARGE
+        ((0.0, 0.9, 0.0, 0.0, 0.9), Action.IDLE),
+        # battery exports beyond the load deficit: forced discharge territory
+        ((0.0, 5.0, 0.0, 0.0, 0.9), Action.DISCHARGE),
+        # daytime: discharge tops up what PV can't cover -> still idle
+        ((0.0, 0.5, 1.0, 1.0, 1.5), Action.IDLE),
+        # charging from PV surplus: self-consumption does this natively
+        ((3.0, 0.0, 5.0, 5.0, 2.0), Action.IDLE),
+        # charging beyond the PV surplus: grid charge
+        ((5.0, 0.0, 2.0, 2.0, 1.0), Action.CHARGE),
+        # spilling PV on purpose (negative feed-in)
+        ((0.0, 0.0, 5.0, 1.0, 1.0), Action.CURTAIL),
+        # nothing happening
+        ((0.0, 0.0, 0.0, 0.0, 0.5), Action.IDLE),
+    ]
+    for args, expected in cases:
+        assert classify_action(*args) == expected, args

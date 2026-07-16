@@ -304,6 +304,7 @@ class Planner:
             float(free.discharge_kw[0]),
             float(data.inputs.pv[0]),
             float(free.pv_used_kw[0]),
+            float(data.inputs.load[0]),
         )
         if free_action == prev_action:
             return free

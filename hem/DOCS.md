@@ -116,6 +116,13 @@ reaches the grid if `grid.export_limit_kw` allows it.
 |---|---|
 | `sensor.hem_status` | `ok` / `degraded`; heartbeat with solve stats and `load_forecast` |
 | `sensor.hem_action` | recommended action now: charge / discharge / idle / curtail (carries `power_kw`/`power_w` attributes, atomic with the action) |
+
+Actions are **grid-coupled**: `charge` means charging *from the grid*, and
+`discharge` means exporting stored energy *to the grid* — the moves your
+inverter's self-consumption mode would never make on its own. Running the
+house off the battery and soaking up PV surplus both publish `idle`, because
+self-consumption mode already does those jobs with second-by-second load
+tracking that a 5-minute forced setpoint can't match.
 | `sensor.hem_power_setpoint` | recommended battery power, kW (+charge / −discharge) |
 | `sensor.hem_soc_target` | planned SoC at end of the current interval |
 | `sensor.hem_horizon_cost` | expected net cost ($) over the horizon |

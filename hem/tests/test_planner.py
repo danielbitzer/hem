@@ -259,14 +259,33 @@ def offline_planner(settings: Settings) -> Planner:
     )
 
 
+def test_load_serving_discharge_classifies_as_idle():
+    """Flat prices, no PV: the battery runs the house, nothing touches the
+    grid — that's self-consumption, so the published action is IDLE (the
+    inverter's native mode does this load-followingly), not DISCHARGE."""
+    settings = make_settings(
+        optimizer={"action_switch_threshold_dollars": 0.0, "forecast_haircut": 0.0}
+    )
+    planner = offline_planner(settings)
+    data = synthetic_cycle_data(settings)
+    plan = planner.optimize(data, NOW)
+    step0 = plan.intervals[0]
+    assert step0.action == Action.IDLE
+    assert step0.power_kw == pytest.approx(-0.5, abs=0.05)  # battery serves the load
+    assert step0.grid_export_kw == pytest.approx(0.0, abs=0.01)
+
+
 def test_hysteresis_keeps_near_degenerate_previous_action():
-    """Flat prices: discharge-for-load vs idle differ by well under the $0.02
-    threshold, so the previous action (idle) is kept."""
+    """Step-0 buy price marginally below the terminal value makes a grid
+    charge worth well under the threshold, so the previous action (idle,
+    which under grid-coupled semantics still lets the battery serve load)
+    is kept."""
     settings = make_settings(
         optimizer={"action_switch_threshold_dollars": 0.05, "forecast_haircut": 0.0}
     )
     planner = offline_planner(settings)
     data = synthetic_cycle_data(settings)
+    data.inputs.buy[0] = 0.23  # terminal value is ~0.245: charging gains cents
     planner.previous_plan = previous_plan_with(Action.IDLE)
     plan = planner.optimize(data, NOW)
     assert plan.intervals[0].action == Action.IDLE
@@ -279,9 +298,10 @@ def test_hysteresis_disabled_switches_freely():
     )
     planner = offline_planner(settings)
     data = synthetic_cycle_data(settings)
+    data.inputs.buy[0] = 0.23
     planner.previous_plan = previous_plan_with(Action.IDLE)
     plan = planner.optimize(data, NOW)
-    assert plan.intervals[0].action == Action.DISCHARGE  # self-consumption wins
+    assert plan.intervals[0].action == Action.CHARGE  # grid charge wins
 
 
 def test_live_spike_guard_suppresses_grid_charge():

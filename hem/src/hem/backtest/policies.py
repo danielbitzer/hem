@@ -107,6 +107,7 @@ class HemPolicy:
             float(solution.discharge_kw[0]),
             float(inputs.pv[0]),
             float(solution.pv_used_kw[0]),
+            float(inputs.load[0]),
         )
         self._last_power = float(solution.charge_kw[0] - solution.discharge_kw[0])
         return self._last_power
@@ -120,6 +121,7 @@ class HemPolicy:
             float(free.discharge_kw[0]),
             float(inputs.pv[0]),
             float(free.pv_used_kw[0]),
+            float(inputs.load[0]),
         )
         if free_action == self._last_action:
             return free

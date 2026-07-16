@@ -120,7 +120,12 @@ def solve(
 ) -> Solution:
     """pin_step0 constrains the first step's battery mode ('charge' /
     'discharge' / 'idle') — used by the planner's hysteresis to price the
-    previous action before allowing a switch."""
+    previous action before allowing a switch.
+
+    Actions are grid-coupled (see classify_action): 'idle' pins step 0 to the
+    self-consumption envelope (charge from PV only, no battery export), NOT a
+    frozen battery — the inverter's idle mode still serves load and soaks up
+    PV surplus."""
     T = len(inputs.dt_hours)
     if not (len(inputs.buy) == len(inputs.sell) == len(inputs.pv) == len(inputs.load) == T):
         raise ValueError("all input arrays must have the same length")
@@ -167,7 +172,9 @@ def solve(
     elif pin_step0 == "discharge":
         constraints += [pc[0] == 0, pd[0] >= 0.01]
     elif pin_step0 in ("idle", "curtail"):
-        constraints += [pc[0] == 0, pd[0] == 0]
+        # self-consumption envelope: charge from PV only, export PV leftovers
+        # only (no battery export); serving load from the battery stays free
+        constraints += [pc[0] <= pv_u[0], ge[0] <= pv_u[0] - pc[0]]
 
     cost = (
         cp.sum(cp.multiply(buy, cp.multiply(gi, dt)))
