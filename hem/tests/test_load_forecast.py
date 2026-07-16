@@ -217,6 +217,27 @@ def test_fit_drops_implausible_temperature_response():
     assert model.heat_kw_per_deg == 0.0
 
 
+def test_block_slopes_capture_schedule_gated_heating():
+    # Heating only runs 5-9am: 0.5 kW/°C there, nothing elsewhere. The
+    # morning block must learn ~0.5 while the night block stays near zero —
+    # a single pooled slope would smear this to ~0.1 everywhere.
+    records = []
+    for day in range(6, 20):  # 14 days so blocks clear MIN_BLOCK_TEMP_HOURS
+        t = 10.0 if day % 2 == 0 else 20.0
+        hdh = max(15.0 - t, 0.0)
+        for h in range(24):
+            kw = 0.4 + (0.5 * hdh if 5 <= h <= 9 else 0.0)
+            records.append((local(day, h), kw, t))
+    model = fit_load_model(records, ADELAIDE)
+    assert model.has_temp_response
+    assert model.heat_by_hour is not None
+    assert model.heat_by_hour[6] == pytest.approx(0.5, abs=0.05)
+    assert model.heat_by_hour[2] == pytest.approx(0.0, abs=0.05)
+    # cold morning forecast: base(6am)=0.4+0.5*2.5=1.65, +0.5*(5-2.5) -> 2.9
+    assert model.predict(0, 6, 10.0) == pytest.approx(2.9, abs=0.1)
+    assert model.predict(0, 2, 10.0) == pytest.approx(0.4, abs=0.1)
+
+
 def test_predict_never_exceeds_observed_max():
     model = fit_load_model(synth_records(range(13, 20)), ADELAIDE)
     observed_max = BASE_KW + COOL_SLOPE * 6  # hottest synthetic day

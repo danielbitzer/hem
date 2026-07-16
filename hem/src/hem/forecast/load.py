@@ -62,6 +62,17 @@ MAX_PLAUSIBLE_MEDIAN_KW = 50.0
 # heating/cooling beyond this per degree means the fit chased an artifact —
 # drop the response rather than forecast nonsense.
 MAX_SLOPE_KW_PER_DEG = 2.0
+# The temperature response is schedule-gated (heating runs at breakfast and
+# in the evening, not at 3am), so one pooled slope dilutes it badly — seen on
+# Dan's data: 0.12 kW/°C at 5-6am vs 0.035 pooled. Slopes are refined per
+# hour block, falling back to the pooled slope where a block is thin.
+HOUR_BLOCKS = (
+    (22, 23, 0, 1, 2, 3, 4),  # night
+    tuple(range(5, 10)),  # morning
+    tuple(range(10, 16)),  # day
+    tuple(range(16, 22)),  # evening
+)
+MIN_BLOCK_TEMP_HOURS = 48
 
 _UNIT_TO_KW = {"W": 0.001, "kW": 1.0, "w": 0.001, "kw": 1.0}
 
@@ -115,8 +126,11 @@ class LoadModel:
     base: list[list[float | None]]  # (daytype, hour) mean kW; None = thin bucket
     cdh_mean: np.ndarray  # (2, 24) mean cooling degrees per bucket
     hdh_mean: np.ndarray
-    cool_kw_per_deg: float = 0.0
+    cool_kw_per_deg: float = 0.0  # pooled across all hours
     heat_kw_per_deg: float = 0.0
+    # per-local-hour refinements (fitted per HOUR_BLOCKS); None = use pooled
+    cool_by_hour: list[float] | None = None
+    heat_by_hour: list[float] | None = None
     balance_cool_c: float = 22.0
     balance_heat_c: float = 15.0
     has_temp_response: bool = False
@@ -139,10 +153,12 @@ class LoadModel:
         if value is None:
             return self.mean_kw
         if self.has_temp_response and temp_c is not None:
+            cool = self.cool_by_hour[hour] if self.cool_by_hour else self.cool_kw_per_deg
+            heat = self.heat_by_hour[hour] if self.heat_by_hour else self.heat_kw_per_deg
             cdh = max(temp_c - self.balance_cool_c, 0.0)
             hdh = max(self.balance_heat_c - temp_c, 0.0)
-            value += self.cool_kw_per_deg * (cdh - self.cdh_mean[weekend][hour])
-            value += self.heat_kw_per_deg * (hdh - self.hdh_mean[weekend][hour])
+            value += cool * (cdh - self.cdh_mean[weekend][hour])
+            value += heat * (hdh - self.hdh_mean[weekend][hour])
         return min(max(value, 0.0), self.max_kw)
 
 
@@ -267,7 +283,7 @@ def fit_load_model(
     if not use_temp:
         return model
 
-    dc, dh, dy = [], [], []
+    dc, dh, dy, hours = [], [], [], []
     for start, load_kw, temp_c in rows:
         weekend, hour = _step_bucket(start, start + timedelta(hours=1), tz)
         if count[weekend][hour] < min_bucket_hours:
@@ -275,22 +291,42 @@ def fit_load_model(
         dc.append(max(temp_c - balance_cool_c, 0.0) - model.cdh_mean[weekend][hour])
         dh.append(max(balance_heat_c - temp_c, 0.0) - model.hdh_mean[weekend][hour])
         dy.append(max(load_kw, 0.0) - base_arr[weekend][hour])
-    if dy:
-        cool, heat = _fit_slopes(np.array(dc), np.array(dh), np.array(dy))
-        if max(cool, heat) > MAX_SLOPE_KW_PER_DEG:
-            log.warning(
-                "fitted temperature response is implausible (%.2f kW/°C cooling, "
-                "%.2f kW/°C heating > %.1f max); dropping it — check the load "
-                "sensor's units and data",
-                cool,
-                heat,
-                MAX_SLOPE_KW_PER_DEG,
-            )
-        else:
-            model.cool_kw_per_deg, model.heat_kw_per_deg = cool, heat
-            # counts as a response even if the house turned out temperature-
-            # insensitive (slopes 0): the data spoke, the answer was "flat"
-            model.has_temp_response = True
+        hours.append(hour)
+    if not dy:
+        return model
+    dc_a, dh_a, dy_a = np.array(dc), np.array(dh), np.array(dy)
+    cool, heat = _fit_slopes(dc_a, dh_a, dy_a)
+    if max(cool, heat) > MAX_SLOPE_KW_PER_DEG:
+        log.warning(
+            "fitted temperature response is implausible (%.2f kW/°C cooling, "
+            "%.2f kW/°C heating > %.1f max); dropping it — check the load "
+            "sensor's units and data",
+            cool,
+            heat,
+            MAX_SLOPE_KW_PER_DEG,
+        )
+        return model
+    model.cool_kw_per_deg, model.heat_kw_per_deg = cool, heat
+    # counts as a response even if the house turned out temperature-
+    # insensitive (slopes 0): the data spoke, the answer was "flat"
+    model.has_temp_response = True
+
+    # Refine per hour block: the response is schedule-gated (heating at
+    # breakfast, not at 3am) and the pooled slope dilutes it. Thin or
+    # implausible blocks keep the pooled slope.
+    hours_a = np.array(hours)
+    cool_by_hour = [cool] * 24
+    heat_by_hour = [heat] * 24
+    for block in HOUR_BLOCKS:
+        mask = np.isin(hours_a, block)
+        if int(mask.sum()) < MIN_BLOCK_TEMP_HOURS:
+            continue
+        bc, bh = _fit_slopes(dc_a[mask], dh_a[mask], dy_a[mask])
+        if max(bc, bh) > MAX_SLOPE_KW_PER_DEG:
+            continue
+        for h in block:
+            cool_by_hour[h], heat_by_hour[h] = bc, bh
+    model.cool_by_hour, model.heat_by_hour = cool_by_hour, heat_by_hour
     return model
 
 
@@ -362,13 +398,18 @@ class HistoryLoadForecaster:
             self._model = await self._learn(now)
             self._next_refresh = now + REFRESH_INTERVAL
             if self._model.has_temp_response:
+                heat_peak = max(self._model.heat_by_hour or [self._model.heat_kw_per_deg])
+                cool_peak = max(self._model.cool_by_hour or [self._model.cool_kw_per_deg])
                 log.info(
                     "load model learned from %s: %d/48 hour buckets, temperature "
-                    "response %.3f kW/°C cooling / %.3f kW/°C heating",
+                    "response pooled %.3f/%.3f kW/°C cooling/heating "
+                    "(peak hour block %.3f/%.3f)",
                     self._entity_id,
                     self._model.known_buckets,
                     self._model.cool_kw_per_deg,
                     self._model.heat_kw_per_deg,
+                    cool_peak,
+                    heat_peak,
                 )
             else:
                 log.info(
