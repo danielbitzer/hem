@@ -33,7 +33,6 @@ class EnvSettings(BaseSettings):
     ha_url: str = ""  # HEM_HA_URL, standalone only
     ha_token: str = ""  # HEM_HA_TOKEN, standalone only
     options_file: Path | None = None  # HEM_OPTIONS_FILE
-    data_dir: Path | None = None  # HEM_DATA_DIR (history/recordings)
     log_level: str = ""  # HEM_LOG_LEVEL, overrides options log_level when set
 
 
@@ -68,13 +67,6 @@ def resolve_connection(env: EnvSettings, supervisor_token: str | None = None) ->
         ws_url=f"{ws_scheme}://{host}/api/websocket",
         token=env.ha_token,
     )
-
-
-def resolve_data_dir(env: EnvSettings, supervisor_token: str | None = None) -> Path:
-    """/data under the Supervisor (persistent add-on storage); ./data standalone."""
-    if env.data_dir:
-        return env.data_dir
-    return Path("/data") if _supervisor_token(supervisor_token) else Path("data")
 
 
 class Entities(BaseModel):

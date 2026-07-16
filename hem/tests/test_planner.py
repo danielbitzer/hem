@@ -336,60 +336,6 @@ def test_spike_reserve_vector_lookahead_and_trigger():
     )
 
 
-def test_backtest_hem_policy_arms_reserve():
-    """The backtester must run the SAME spike reserve as the live planner."""
-
-    from hem.backtest.policies import HemPolicy
-    from hem.backtest.sim import CycleRecord
-    from hem.config import Spike
-    from hem.optimizer.model import GridParams
-    from hem.planner import battery_params
-
-    settings = make_settings(
-        battery={"capacity_kwh": 44.8, "max_charge_kw": 12.0, "max_discharge_kw": 12.0}
-    )
-    battery = battery_params(settings)
-    grid_params = GridParams(import_limit_kw=15.0, export_limit_kw=15.0)
-    T = 12
-    sell = np.full(T, 0.50)  # attractive enough to sell down without a reserve
-    buy = np.full(T, 0.60)
-    sell[6], buy[6] = 5.0, 5.3  # potential spike 3h out
-    record = CycleRecord(
-        ts=NOW,
-        dt_hours=np.full(T, 0.5),
-        buy=buy,
-        sell=sell,
-        pv=np.zeros(T),
-        load=np.full(T, 0.5),
-        current_buy=0.60,
-        current_sell=0.50,
-        live_spike=False,
-    )
-    spike_cfg = Spike(lookahead_hours=4, reserve_kwh=20.0, high_price_threshold=1.0,
-                      reserve_penalty_per_kwh=5.0, discharge_kw=15.0)
-    policy = HemPolicy(battery, grid_params, spike=spike_cfg)
-    inputs = policy.build_inputs(record, soc_kwh=30.0)
-    # Structural parity: the reserve/cap vectors are exactly what the shared
-    # planner functions produce for the same arrays
-    from hem.planner import discharge_cap_vector, spike_reserve_vector
-
-    expected_reserve = spike_reserve_vector(
-        sell, record.dt_hours, lookahead_hours=4, high_price_threshold=1.0,
-        reserve_kwh=20.0, soc_max_kwh=battery.soc_max_kwh,
-    )
-    assert expected_reserve is not None
-    assert inputs.reserve_kwh is not None
-    assert (inputs.reserve_kwh == expected_reserve).all()
-    assert (inputs.reserve_kwh[:6] == 20.0).all()  # armed up to the spike step
-    # No live spike in this record -> no raised discharge cap
-    assert inputs.max_discharge_kw_step is None
-    live = CycleRecord(**{**record.__dict__, "live_spike": True})
-    caps = policy.build_inputs(live, soc_kwh=30.0).max_discharge_kw_step
-    expected_caps = discharge_cap_vector(T, True, 15.0, battery.max_discharge_kw)
-    assert caps is not None and expected_caps is not None
-    assert (caps == expected_caps).all()
-
-
 def test_fallback_shifts_previous_plan():
     settings = make_settings()
     planner = offline_planner(settings)

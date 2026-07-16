@@ -154,19 +154,6 @@ action/setpoint/SoC/cost tiles plus charts of prices, PV/load forecast, planned
 battery power with grid flows, and the SoC trajectory. Auto-refreshes every
 minute; fully offline (no CDN).
 
-## Backtesting
-
-Every cycle's normalized inputs are recorded to `/data/history/*.jsonl`. After
-a few days of dry-run operation, replay them:
-
-```sh
-python -m hem.backtest.cli --history /data/history --options /data/options.json
-```
-
-This compares HEM against no-battery and self-consumption baselines and reports
-$/day and spike revenue. **Do not enable active mode until HEM beats
-self-consumption on your own recorded data.**
-
 ## Controlling your inverter (the actuator automation)
 
 HEM never writes to your inverter. It publishes recommendations; a Home
@@ -248,8 +235,10 @@ with a stale setpoint. Note some mkaiser versions gate the export limit
 behind `switch.sungrow_export_power_limit_mode` — if yours does, enable it in
 curtail and disable it in uncurtail instead of writing your DNSP limit back.
 
-**Do not create the automation until a backtest on your own recorded data
-shows HEM beating self-consumption** (see Backtesting above), and bench-test
-it: watch the inverter follow a charge → discharge → idle transition, then
-stop the HEM add-on and confirm the failsafe reverts to self-consumption
-within your configured heartbeat age.
+**Do not create the automation until you've watched HEM's dry-run
+recommendations for at least a few days** and they consistently make sense
+against your prices and household load. Then bench-test it: watch the
+inverter follow a charge → discharge → idle transition, then stop the HEM
+add-on and confirm the failsafe reverts to self-consumption within your
+configured heartbeat age — and keep an eye on its decisions for the first
+few weeks.

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from hem.config import EnvSettings, load_settings, resolve_connection, resolve_data_dir
+from hem.config import EnvSettings, load_settings, resolve_connection
 
 MINIMAL_OPTIONS = {
     "entities": {
@@ -87,13 +87,6 @@ def test_connection_standalone_https():
 def test_connection_unconfigured():
     with pytest.raises(RuntimeError, match="HEM_HA_URL"):
         resolve_connection(env_settings(), supervisor_token="")
-
-
-def test_data_dir_resolution(tmp_path: Path):
-    assert resolve_data_dir(env_settings(), supervisor_token="tok") == Path("/data")
-    assert resolve_data_dir(env_settings(), supervisor_token="") == Path("data")
-    custom = env_settings(data_dir=tmp_path)
-    assert resolve_data_dir(custom, supervisor_token="") == tmp_path
 
 
 def test_env_settings_reads_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

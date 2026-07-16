@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Backtesting removed** (`hem.backtest`, the `/data/history` JSONL recorder,
+  and the `HEM_DATA_DIR` env var): the project is validated by reviewing the
+  dry-run dashboard and monitoring live behaviour instead of programmatic
+  replay. The add-on no longer writes anything to `/data` except its options.
+
 ## 0.1.5
 
 - **`sensor.hem_plan` removed**: nothing consumed it (the dashboard reads the

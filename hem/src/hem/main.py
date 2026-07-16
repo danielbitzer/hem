@@ -23,14 +23,13 @@ from hem.adapters.amber import AmberExpressAdapter
 from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
 from hem.adapters.weather import WeatherAdapter
-from hem.config import EnvSettings, Settings, load_settings, resolve_connection, resolve_data_dir
+from hem.config import EnvSettings, Settings, load_settings, resolve_connection
 from hem.forecast.load import build_load_forecaster, default_timezone
 from hem.ha.client import HaClient
 from hem.ha.publisher import Publisher
 from hem.models import Plan
 from hem.optimizer.model import SolverError
 from hem.planner import InputsStale, Planner
-from hem.recorder import Recorder, cycle_inputs_to_json
 from hem.web.app import AppState, create_app
 
 log = logging.getLogger("hem")
@@ -45,15 +44,6 @@ WS_RECONNECT_BACKOFF_S = 30
 def seconds_to_next_boundary(now_epoch: float, period: int = CYCLE_SECONDS) -> float:
     """Seconds until the next wall-clock multiple of `period` (min 1s)."""
     return max(1.0, period - (now_epoch % period))
-
-
-async def _record(recorder: Recorder, kind: str, data: dict, ts: datetime) -> None:
-    """History recording is auxiliary — it must never block planning, nor the
-    event loop (file I/O on slow SD cards/overlayfs runs in a thread)."""
-    try:
-        await asyncio.to_thread(recorder.record, kind, data, ts)
-    except OSError as e:
-        log.warning("could not record %s history (%s)", kind, e)
 
 
 class PriceWatcher:
@@ -95,7 +85,6 @@ class PriceWatcher:
 async def cycle(
     planner: Planner,
     publisher: Publisher,
-    recorder: Recorder,
     settings: Settings,
     app_state: AppState,
 ) -> Plan:
@@ -137,19 +126,6 @@ async def cycle(
         },
     )
 
-    await _record(recorder, "inputs", cycle_inputs_to_json(data), now)
-    await _record(
-        recorder,
-        "plan",
-        {
-            "action": step0.action.value,
-            "power_kw": step0.power_kw,
-            "objective_cost": plan.objective_cost,
-            "solver_status": plan.solver_status,
-            "solve_ms": plan.solve_ms,
-        },
-        now,
-    )
     log.info(
         "cycle ok: action=%s power=%+.2fkW soc=%.0f%% cost=$%.2f solve=%.0fms",
         step0.action.value,
@@ -190,7 +166,6 @@ async def run() -> None:
         with contextlib.suppress(NotImplementedError, RuntimeError):
             loop.add_signal_handler(sig, main_task.cancel)
 
-    recorder = Recorder(resolve_data_dir(env) / "history")
     try:
         async with HaClient(conn) as client:
             if not await client.api_ok():
@@ -219,7 +194,7 @@ async def run() -> None:
                 while True:
                     try:
                         async with asyncio.timeout(90):
-                            await cycle(planner, publisher, recorder, settings, app_state)
+                            await cycle(planner, publisher, settings, app_state)
                         app_state.health.mark_success()
                     except asyncio.CancelledError:
                         raise

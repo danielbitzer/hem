@@ -1,7 +1,8 @@
 # Setting up HEM from a fresh Home Assistant install
 
 This walks from a clean Home Assistant OS install to HEM planning (dry-run),
-and then — only after the backtest gate — to actual inverter control. Every
+and then — only after you've reviewed its plans for a while — to actual
+inverter control. Every
 step before "Install the HEM add-on" is an ordinary HA integration that HEM
 merely reads, so if you already have some of them, skip ahead.
 
@@ -135,29 +136,13 @@ Two things to check:
    `sensor.hem_horizon_cost`, `sensor.hem_status`.
 
 At this point HEM is a pure **recommendation engine** — it writes nothing to
-the inverter, ever. It also records every cycle's inputs and plan to
-`/data/history/` for the next step.
+the inverter, ever. Run it like this for at least a few days: watch the
+dashboard and compare its recommendations against the Amber app and what your
+inverter would have done on its own. Only wire up actuation once the plans
+consistently look right to you (sensible charge windows, no phantom-spike
+chasing, a load forecast that matches your household).
 
-## 7. The backtest gate
-
-Let dry-run record for **at least a week**, then replay HEM against baseline
-policies on your own data:
-
-```sh
-# dev checkout on your machine (copy the add-on's /data/history locally, e.g.
-# via the Samba/SSH add-on; standalone dev runs record to hem/data/history).
-# --options points at your HEM options as JSON — copy dev-options.json.example
-# and fill in your entities/battery if you don't have one yet.
-cd hem
-uv run python -m hem.backtest.cli --history ./data/history --options ./dev-options.json
-```
-
-It reports $/day for no-battery, naive self-consumption, and HEM, plus the
-revenue earned during spikes. **Do not wire up actuation until HEM beats
-self-consumption on your recorded data** — tune wear cost and spike reserve
-(and make sure load learning is active) first if it doesn't.
-
-## 8. Actuation (after the gate)
+## 7. Actuation
 
 Import [`blueprints/hem_actuator.yaml`](../blueprints/hem_actuator.yaml)
 (Settings → Automations → Blueprints → Import), create an automation from it,

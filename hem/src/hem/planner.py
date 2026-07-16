@@ -60,9 +60,7 @@ def spike_reserve_vector(
     soc_max_kwh: float,
 ) -> np.ndarray | None:
     """Soft SoC floor up to the first high-price step within the lookahead
-    window, so energy is held ready to sell into a potential spike.
-
-    Pure so the backtester's HemPolicy runs EXACTLY this logic."""
+    window, so energy is held ready to sell into a potential spike."""
     if reserve_kwh <= 0:
         return None
     offset = 0.0  # hours from now to the step's start
@@ -84,8 +82,7 @@ def spike_reserve_vector(
 def discharge_cap_vector(
     steps: int, live_spike: bool, spike_discharge_kw: float, max_discharge_kw: float
 ) -> np.ndarray | None:
-    """Raised step-0 discharge cap during a CONFIRMED spike only (pure, shared
-    with the backtester)."""
+    """Raised step-0 discharge cap during a CONFIRMED spike only."""
     if not live_spike or spike_discharge_kw <= max_discharge_kw:
         return None
     caps = np.full(steps, max_discharge_kw)

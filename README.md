@@ -91,21 +91,6 @@ action + setpoint onto your inverter's controls, and reverts to
 self-consumption when HEM's heartbeat goes stale. See
 [hem/DOCS.md](hem/DOCS.md) for a complete Sungrow example.
 
-## Backtesting
-
-Dry-run cycles record every input and decision to `/data/history/` as JSONL.
-The backtester replays them receding-horizon (re-solving each step with only
-the data that was available at that moment — same code paths as live) against
-baseline policies:
-
-```sh
-cd hem && uv run python -m hem.backtest.cli --history ./data/history --options ./dev-options.json
-```
-
-reporting $/day for no-battery, naive self-consumption, and HEM, plus revenue
-earned during spikes. The house rule: **HEM must beat self-consumption on
-your own recorded data before you create the actuator automation.**
-
 ## Under the hood
 
 | | |
@@ -119,7 +104,7 @@ your own recorded data before you create the actuator automation.**
 
 Layout: the repo root is an HA add-on repository; the add-on and all Python
 lives in [hem/](hem/) (`src/hem/` — adapters, timegrid, optimizer, planner,
-publisher, backtest, web), with the actuator blueprint in
+publisher, web), with the actuator blueprint in
 [blueprints/](blueprints/).
 
 ## Install (HA OS / Supervised)
