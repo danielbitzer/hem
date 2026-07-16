@@ -101,28 +101,3 @@ class Publisher:
                 "horizon_end": plan.intervals[-1].end.isoformat(),
             },
         )
-        await self._client.set_state(
-            "sensor.hem_plan",
-            plan.computed_at.isoformat(),
-            {
-                "friendly_name": "HEM plan",
-                "icon": "mdi:chart-timeline-variant",
-                "solve_ms": round(plan.solve_ms, 1),
-                "plan": [
-                    {
-                        "t": iv.start.isoformat(),
-                        "action": iv.action.value,
-                        "power": round(iv.power_kw, 3),
-                        "soc": round(100 * iv.soc_end / capacity_kwh, 1),
-                        "buy": round(iv.buy, 4),
-                        "sell": round(iv.sell, 4),
-                        "pv": round(iv.pv_kw, 3),
-                        "load": round(iv.load_kw, 3),
-                        "import": round(iv.grid_import_kw, 3),
-                        "export": round(iv.grid_export_kw, 3),
-                        "cost": round(iv.interval_cost, 4),
-                    }
-                    for iv in plan.intervals
-                ],
-            },
-        )

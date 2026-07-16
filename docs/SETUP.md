@@ -132,17 +132,7 @@ Two things to check:
    dashboard — plan, prices, PV/load forecast, SoC trajectory.
 4. Check Developer tools → States for `sensor.hem_action`,
    `sensor.hem_power_setpoint`, `sensor.hem_soc_target`,
-   `sensor.hem_horizon_cost`, `sensor.hem_plan`, `sensor.hem_status`.
-5. Keep `sensor.hem_plan` (a large attribute republished every 5 minutes) out
-   of the recorder database:
-
-   ```yaml
-   # configuration.yaml
-   recorder:
-     exclude:
-       entities:
-         - sensor.hem_plan
-   ```
+   `sensor.hem_horizon_cost`, `sensor.hem_status`.
 
 At this point HEM is a pure **recommendation engine** — it writes nothing to
 the inverter, ever. It also records every cycle's inputs and plan to

@@ -81,7 +81,7 @@ the plan honest:
 Published every cycle (REST sensors): `sensor.hem_action`
 (charge/discharge/idle/curtail), `sensor.hem_power_setpoint` (signed kW, with
 `power_w` attribute), `sensor.hem_soc_target`, `sensor.hem_horizon_cost`,
-`sensor.hem_plan` (full interval list), and `sensor.hem_status` (heartbeat).
+and `sensor.hem_status` (heartbeat).
 An ingress dashboard charts the plan: prices, PV/load forecasts, planned
 battery power, and the SoC trajectory.
 

@@ -141,17 +141,11 @@ is lost.
 | `sensor.hem_power_setpoint` | recommended battery power, kW (+charge / −discharge) |
 | `sensor.hem_soc_target` | planned SoC at end of the current interval |
 | `sensor.hem_horizon_cost` | expected net cost ($) over the horizon |
-| `sensor.hem_plan` | full interval-by-interval plan in the `plan` attribute |
 
 These sensors are republished every cycle and disappear on HA restart until the next
-cycle (~5 min). Exclude the plan sensor from the recorder to avoid database bloat:
-
-```yaml
-recorder:
-  exclude:
-    entities:
-      - sensor.hem_plan
-```
+cycle (~5 min). The full interval-by-interval plan is not published as a sensor —
+it's a lot of data for the recorder to store every 5 minutes; view it on the
+dashboard instead.
 
 ## Dashboard
 
