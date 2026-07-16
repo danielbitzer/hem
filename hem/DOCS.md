@@ -49,21 +49,18 @@ Limits of your **grid connection**, distinct from the battery's power limits:
 inverter DC side); the grid limits cap the *net AC flow at the meter*. The
 optimizer respects both simultaneously.
 
-### `load_profile`
+### `load_forecast`
 
-24 hourly baseline kW values for weekdays and weekends.
-
-Set `source: history` to **learn the hourly baseline from your actual
-consumption** instead: once a day HEM reads hourly long-term statistics of
-`entities.load_power` (a house load sensor in W or kW — e.g. the mkaiser
-package's `sensor.load_power`) over the last `history_days` (60) and builds
-hour-of-day averages, split weekday/weekend, in your local timezone. Long-term
-statistics survive recorder purging, so the window can genuinely be months; if
-the sensor has no `state_class` (hence no statistics), HEM falls back to raw
-recorder history (limited to your purge window, ~10 days). The configured
-`weekday_kw`/`weekend_kw` remain the fallback — per hour when a bucket has
-under 2 observed hours of data, and entirely when history is unavailable — so
-learning can degrade but never break planning.
+The household load forecast is **learned from your actual consumption** —
+there is no hand-typed profile. Once a day HEM reads hourly long-term
+statistics of `entities.load_power` (a house load sensor in W or kW — e.g.
+the mkaiser package's `sensor.load_power`) over the last `history_days` (60)
+and builds hour-of-day averages, split weekday/weekend, in your local
+timezone. Long-term statistics survive recorder purging, so the window can
+genuinely be months; if the sensor has no `state_class` (hence no
+statistics), HEM falls back to raw recorder history (limited to your purge
+window, ~10 days). Hours with under 2 observed hours of data use the mean of
+the hours that do have data.
 
 Add `entities.outdoor_temp` (any outdoor temperature sensor with long-term
 statistics) and the daily learn also fits a **temperature response**: how many
@@ -71,8 +68,17 @@ kW your house adds per degree above 22°C (cooling) and below 15°C (heating),
 regressed from the same window. Forecasts then apply the *forecast*
 temperature to those slopes — so a heatwave arriving after a mild fortnight
 raises the load forecast immediately, instead of the trailing average lagging
-the weather. This is the only temperature sensitivity in the load forecast;
-there are deliberately no manual temperature rules to tune.
+the weather. The model is only fitted on hours where load and temperature
+history overlap, so a newly added temperature sensor shortens the effective
+learning window rather than skewing the fit (it grows back as statistics
+accumulate).
+
+**Without `entities.load_power`** (or before learning first succeeds) HEM
+plans with **zero house load** and flags it: `sensor.hem_status` carries
+`load_forecast: unconfigured|pending` and the dashboard shows a warning.
+Plans still work, but they'll overestimate what's exportable and may run the
+battery lower than you'd like — **raise `battery.soc_min`** to keep a comfort
+buffer until learning is active. The goal state is always a learned forecast.
 
 ### `optimizer`
 

@@ -112,7 +112,11 @@ async def cycle(
         "ok",
         last_solve=now,
         solve_ms=plan.solve_ms,
-        extra={"coverage": data.coverage, "price_forecast_end": forecast_end},
+        extra={
+            "coverage": data.coverage,
+            "price_forecast_end": forecast_end,
+            "load_forecast": data.load_forecast_status,
+        },
     )
 
     await _record(recorder, "inputs", cycle_inputs_to_json(data), now)
@@ -132,6 +136,7 @@ async def cycle(
         "capacity_kwh": settings.battery.capacity_kwh,
         "price_forecast_end": forecast_end,
         "coverage": data.coverage,
+        "load_forecast": data.load_forecast_status,
     }
     log.info(
         "cycle ok: action=%s power=%+.2fkW soc=%.0f%% cost=$%.2f solve=%.0fms",
@@ -190,9 +195,9 @@ async def run() -> None:
                 load_forecaster=build_load_forecaster(
                     client,
                     settings.entities.load_power,
-                    settings.load_profile,
                     tz,
                     outdoor_temp=settings.entities.outdoor_temp,
+                    history_days=settings.load_forecast.history_days,
                 ),
             )
             watcher = PriceWatcher(settings)

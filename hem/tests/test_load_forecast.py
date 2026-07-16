@@ -5,10 +5,10 @@ import numpy as np
 import pytest
 from conftest import FakeHa, fake_ha_client
 
-from hem.config import LoadProfile
 from hem.forecast.load import (
-    BaselineLoadForecaster,
     HistoryLoadForecaster,
+    UnconfiguredLoadForecaster,
+    build_load_forecaster,
     fit_load_model,
     learn_hourly_profile,
 )
@@ -16,51 +16,28 @@ from hem.timegrid import TimeGrid
 
 ADELAIDE = ZoneInfo("Australia/Adelaide")
 
-PROFILE = LoadProfile(
-    weekday_kw=[float(h) / 10 for h in range(24)],  # hour h -> h/10 kW (recognizable)
-    weekend_kw=[2.0] * 24,
-)
-
 
 def half_hour_grid(start_utc: datetime, hours: int) -> TimeGrid:
     bounds = [start_utc + timedelta(minutes=30 * i) for i in range(1, hours * 2)]
     return TimeGrid.build(start_utc, bounds, timedelta(hours=hours))
 
 
-def test_local_hour_lookup_with_half_hour_offset():
-    # 2026-07-15 is a Wednesday. 00:00 UTC == 09:30 in Adelaide (+09:30).
-    grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 2)
-    fc = BaselineLoadForecaster(PROFILE, ADELAIDE)
-    out = fc.forecast(grid, None)
-    # Steps: 09:30-10:00 (hour 9), 10:00-10:30, 10:30-11:00 (hour 10), 11:00-11:30 (11)
-    assert out[0] == pytest.approx(0.9)
-    assert out[1] == pytest.approx(1.0)
-    assert out[2] == pytest.approx(1.0)
-    assert out[3] == pytest.approx(1.1)
-
-
-def test_weekend_profile_selected_by_local_day():
-    # Friday 14:30 UTC == Saturday 00:00 in Adelaide: local day decides.
-    grid = half_hour_grid(datetime(2026, 7, 17, 14, 30, tzinfo=UTC), 1)
-    out = BaselineLoadForecaster(PROFILE, ADELAIDE).forecast(grid, None)
-    assert np.allclose(out, 2.0)
-
-
-def test_temps_ignored_by_baseline():
-    # profile mode has no temperature sensitivity — that's history+outdoor_temp's job
-    grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 2)
-    fc = BaselineLoadForecaster(PROFILE, ADELAIDE)
-    assert np.allclose(fc.forecast(grid, np.array([30.0, 20.0, 8.0, 8.0])), fc.forecast(grid, None))
+def test_unconfigured_forecaster_is_zero_and_flagged():
+    fc = build_load_forecaster(None, "", ADELAIDE)  # type: ignore[arg-type]
+    assert isinstance(fc, UnconfiguredLoadForecaster)
+    assert fc.status == "unconfigured"
+    grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)
+    assert np.allclose(fc.forecast(grid, None), 0.0)
 
 
 def test_temp_length_mismatch_rejected():
     grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)
-    fc = HistoryLoadForecaster(None, "sensor.load_power", PROFILE, ADELAIDE)  # type: ignore[arg-type]
+    fc = HistoryLoadForecaster(None, "sensor.load_power", ADELAIDE)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="grid steps"):
         fc.forecast(grid, np.array([20.0]))
 
 
-# --- history-learned profile ------------------------------------------------
+# --- learned hourly profile (raw recorder history path) -----------------------
 
 # 2026-07-13/14/15 are Mon/Tue/Wed; Adelaide winter is UTC+9:30, so local
 # hour 10 on those days is 00:30–01:30 UTC.
@@ -121,31 +98,33 @@ def load_power_state(unit: str | None) -> dict:
 NOW = datetime(2026, 7, 15, 2, 0, tzinfo=UTC)
 
 
-async def test_history_forecaster_learns_and_falls_back_per_hour():
-    fake = FakeHa()
+async def test_raw_history_learning_with_bucket_mean_fallback():
+    fake = FakeHa()  # no statistics -> raw recorder history path
     fake.states["sensor.load_power"] = load_power_state("W")
     # 3 weekdays × 1h of samples at local hour 10 -> 3h >= MIN_BUCKET_HOURS;
     # values in W (1500 -> 1.5 kW)
     samples = [s for day in (13, 14, 15) for s in hour_of_samples(day, 10, 1500.0)]
     fake.history["sensor.load_power"] = history_items(samples)
     async with fake_ha_client(fake) as client:
-        fc = HistoryLoadForecaster(client, "sensor.load_power", PROFILE, ADELAIDE)
+        fc = HistoryLoadForecaster(client, "sensor.load_power", ADELAIDE)
+        assert fc.status == "pending"
         await fc.refresh(NOW)
-        # local hours 9,10,10,11: only hour 10 is learned, rest from PROFILE
+        assert fc.status == "learned"
+        # local hours 9,10,10,11: hour 10 is learned; thin buckets fall back
+        # to the mean of the known buckets (1.5, the only one)
         grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 2)
         out = fc.forecast(grid, None)
-    assert out[0] == pytest.approx(0.9)  # profile fallback (hour 9)
-    assert out[1] == pytest.approx(1.5)  # learned (hour 10, W scaled to kW)
-    assert out[2] == pytest.approx(1.5)
-    assert out[3] == pytest.approx(1.1)  # profile fallback (hour 11)
+    assert np.allclose(out, 1.5)
 
 
 async def test_history_refresh_rate_limited():
     fake = FakeHa()
     fake.states["sensor.load_power"] = load_power_state("W")
-    fake.history["sensor.load_power"] = history_items(hour_of_samples(15, 10, 1000.0))
+    fake.history["sensor.load_power"] = history_items(
+        [s for day in (13, 14, 15) for s in hour_of_samples(day, 10, 1000.0)]
+    )
     async with fake_ha_client(fake) as client:
-        fc = HistoryLoadForecaster(client, "sensor.load_power", PROFILE, ADELAIDE)
+        fc = HistoryLoadForecaster(client, "sensor.load_power", ADELAIDE)
         await fc.refresh(NOW)
         await fc.refresh(NOW + timedelta(hours=7))
         assert len(fake.history_requests) == 1  # daily cadence: 7h is too soon
@@ -157,18 +136,17 @@ async def test_history_failure_never_fatal_and_retries_later():
     fake = FakeHa()
     fake.states["sensor.load_power"] = load_power_state(None)  # unit missing
     async with fake_ha_client(fake) as client:
-        fc = HistoryLoadForecaster(client, "sensor.load_power", PROFILE, ADELAIDE)
+        fc = HistoryLoadForecaster(client, "sensor.load_power", ADELAIDE)
         await fc.refresh(NOW)  # must not raise
+        assert fc.status == "pending"  # degraded: planning with zero load
         grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)
-        out = fc.forecast(grid, None)
-        baseline = BaselineLoadForecaster(PROFILE, ADELAIDE).forecast(grid, None)
-        assert np.allclose(out, baseline)
+        assert np.allclose(fc.forecast(grid, None), 0.0)
         # empty history (recorder purged) is also non-fatal
         fake.states["sensor.load_power"] = load_power_state("kW")
         await fc.refresh(NOW + timedelta(minutes=5))  # rate-limited, no call yet
         await fc.refresh(NOW + timedelta(minutes=31))
         assert len(fake.history_requests) == 1  # retried after RETRY_INTERVAL
-        assert np.allclose(fc.forecast(grid, None), baseline)
+        assert fc.status == "pending"
 
 
 # --- temperature response (long-term statistics) ------------------------------
@@ -214,6 +192,17 @@ def test_fit_without_enough_temp_hours_is_base_only():
     assert model.cool_kw_per_deg == 0.0
 
 
+def test_fit_window_capped_to_temperature_overlap():
+    # 4 days of load WITH temperature at 2.0 kW, preceded by 6 days of
+    # load-only history at 1.0 kW: the fit must use only the overlap, not
+    # blend in load from before the temperature sensor existed.
+    old = [(ts, 1.0, None) for ts, _, _ in synth_records(range(6, 12))]
+    joint = [(ts, 2.0, 20.0) for ts, _, _ in synth_records(range(13, 17))]  # 96h >= 72
+    model = fit_load_model(old + joint, ADELAIDE)
+    assert model.has_temp_response
+    assert model.base[0][10] == pytest.approx(2.0)
+
+
 def stat_rows(values: list[tuple[datetime, float]]) -> list[dict]:
     return [{"start": int(ts.timestamp() * 1000), "mean": v} for ts, v in values]
 
@@ -230,11 +219,11 @@ async def test_lts_learning_with_temperature_response():
         fc = HistoryLoadForecaster(
             client,
             "sensor.load_power",
-            PROFILE,
             ADELAIDE,
             temp_entity_id="sensor.outdoor_temp",
         )
         await fc.refresh(datetime(2026, 7, 20, 0, 0, tzinfo=UTC))
+        assert fc.status == "learned"
         assert len(fake.history_requests) == 0  # LTS path, no raw history needed
         grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)
         hot = fc.forecast(grid, np.array([30.0, 30.0]))
@@ -250,7 +239,7 @@ async def test_lts_unavailable_falls_back_to_raw_history():
     samples = [s for day in (13, 14, 15) for s in hour_of_samples(day, 10, 1500.0)]
     fake.history["sensor.load_power"] = history_items(samples)
     async with fake_ha_client(fake) as client:
-        fc = HistoryLoadForecaster(client, "sensor.load_power", PROFILE, ADELAIDE)
+        fc = HistoryLoadForecaster(client, "sensor.load_power", ADELAIDE)
         await fc.refresh(NOW)
         assert len(fake.history_requests) == 1
         grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)

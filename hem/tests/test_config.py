@@ -17,7 +17,6 @@ MINIMAL_OPTIONS = {
     },
     "battery": {"capacity_kwh": 12.8, "max_charge_kw": 5.0, "max_discharge_kw": 5.0},
     "grid": {"import_limit_kw": 15.0, "export_limit_kw": 5.0},
-    "load_profile": {"weekday_kw": [0.5] * 24, "weekend_kw": [0.6] * 24},
 }
 
 
@@ -52,20 +51,13 @@ def test_invalid_soc_bounds_rejected(tmp_path: Path):
         load_settings(write_options(tmp_path, options))
 
 
-def test_history_load_source_requires_load_power_entity(tmp_path: Path):
+def test_load_forecast_defaults_and_no_load_sensor_is_valid(tmp_path: Path):
+    # no load sensor is a valid (degraded) config — HEM plans with zero load
+    settings = load_settings(write_options(tmp_path, MINIMAL_OPTIONS))
+    assert settings.entities.load_power == ""
+    assert settings.load_forecast.history_days == 60
     options = json.loads(json.dumps(MINIMAL_OPTIONS))
-    options["load_profile"]["source"] = "history"
-    with pytest.raises(ValueError, match="load_power"):
-        load_settings(write_options(tmp_path, options))
-    options["entities"]["load_power"] = "sensor.load_power"
-    settings = load_settings(write_options(tmp_path, options))
-    assert settings.load_profile.source == "history"
-    assert settings.load_profile.history_days == 60
-
-
-def test_load_profile_must_have_24_values(tmp_path: Path):
-    options = json.loads(json.dumps(MINIMAL_OPTIONS))
-    options["load_profile"]["weekday_kw"] = [0.5] * 23
+    options["load_forecast"] = {"history_days": 400}
     with pytest.raises(ValueError):
         load_settings(write_options(tmp_path, options))
 

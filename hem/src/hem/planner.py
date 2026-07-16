@@ -25,7 +25,7 @@ from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
 from hem.adapters.weather import WeatherAdapter
 from hem.config import Settings
-from hem.forecast.load import BaselineLoadForecaster, LoadForecaster
+from hem.forecast.load import LoadForecaster
 from hem.models import Action, BatteryState, Plan, PriceForecast, Series
 from hem.optimizer.model import (
     BatteryParams,
@@ -104,6 +104,9 @@ class CycleData:
     # value (padding) and should be read with appropriate suspicion.
     price_forecast_end: datetime | None = None
     coverage: dict[str, float] | None = None
+    # anything but "learned" means the plan assumes zero house load — surfaced
+    # as a warning on the dashboard and hem_status
+    load_forecast_status: str = "learned"
 
 
 class Planner:
@@ -116,16 +119,14 @@ class Planner:
         battery: SungrowAdapter,
         weather: WeatherAdapter,
         tz: ZoneInfo,
-        load_forecaster: LoadForecaster | None = None,
+        load_forecaster: LoadForecaster,
     ):
         self._settings = settings
         self._prices = prices
         self._solar = solar
         self._battery = battery
         self._weather = weather
-        self._load_forecaster = load_forecaster or BaselineLoadForecaster(
-            settings.load_profile, tz
-        )
+        self._load_forecaster = load_forecaster
         self._battery_params = battery_params(settings)
         self._grid_params = GridParams(
             import_limit_kw=settings.grid.import_limit_kw,
@@ -204,6 +205,7 @@ class Planner:
             temps=temps,
             price_forecast_end=min(prices.buy.end, prices.sell.end),
             coverage=cov,
+            load_forecast_status=self._load_forecaster.status,
         )
 
     def _discharge_caps(self, steps: int, live_spike: bool) -> np.ndarray | None:

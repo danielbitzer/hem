@@ -34,10 +34,6 @@ SETTINGS_DICT = {
     },
     "battery": {"capacity_kwh": 12.8, "max_charge_kw": 5.0, "max_discharge_kw": 5.0},
     "grid": {"import_limit_kw": 15.0, "export_limit_kw": 5.0},
-    "load_profile": {
-        "weekday_kw": [0.5] * 24,
-        "weekend_kw": [0.6] * 24,
-    },
 }
 
 
@@ -90,6 +86,21 @@ def full_fake_ha() -> FakeHa:
     return fake
 
 
+class FixedLoadForecaster:
+    """Constant-load stand-in so planner tests keep deterministic economics."""
+
+    status = "learned"
+
+    def __init__(self, kw: float = 0.5):
+        self._kw = kw
+
+    async def refresh(self, now):
+        return None
+
+    def forecast(self, grid, temps_c):
+        return np.full(len(grid), self._kw)
+
+
 def make_planner(client, settings: Settings) -> Planner:
     return Planner(
         settings,
@@ -98,6 +109,7 @@ def make_planner(client, settings: Settings) -> Planner:
         battery=SungrowAdapter(client, settings.entities, settings.battery),
         weather=WeatherAdapter(client, settings.entities),
         tz=ADELAIDE,
+        load_forecaster=FixedLoadForecaster(),
     )
 
 
@@ -229,6 +241,7 @@ def offline_planner(settings: Settings) -> Planner:
         battery=cast(SungrowAdapter, None),
         weather=cast(WeatherAdapter, None),
         tz=ADELAIDE,
+        load_forecaster=FixedLoadForecaster(),
     )
 
 

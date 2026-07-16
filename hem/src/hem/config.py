@@ -90,12 +90,14 @@ class Entities(BaseModel):
     battery_soc: str
     battery_power: str
     weather: str
-    # House load power sensor (W or kW), required for load_profile.source:
-    # history — e.g. the mkaiser package's sensor.load_power.
+    # House load power sensor (W or kW) — the load forecast is learned from
+    # its history (e.g. the mkaiser package's sensor.load_power). Optional but
+    # strongly recommended: without it HEM plans with ZERO house load and
+    # reports a degraded load forecast.
     load_power: str = ""
     # Outdoor temperature sensor with long-term statistics (state_class set).
-    # Optional; with load_profile.source: history it enables the learned
-    # temperature response (load vs cooling/heating degrees).
+    # Optional; enables the learned temperature response (load vs
+    # cooling/heating degrees).
     outdoor_temp: str = ""
 
     @model_validator(mode="after")
@@ -135,16 +137,12 @@ class Grid(BaseModel):
     export_limit_kw: float = Field(ge=0)
 
 
-class LoadProfile(BaseModel):
-    weekday_kw: list[float] = Field(min_length=24, max_length=24)
-    weekend_kw: list[float] = Field(min_length=24, max_length=24)
-    # history: learn the hourly baseline (and, with entities.outdoor_temp, a
-    # temperature response) from the household's actual consumption; the
-    # profile above remains the per-hour fallback.
-    source: Literal["profile", "history"] = "profile"
+class LoadForecast(BaseModel):
     # Learning window. Hourly long-term statistics reach months back; the raw
     # recorder-history fallback is capped by the recorder purge window (~10
-    # days) regardless of this value.
+    # days) regardless of this value. With entities.outdoor_temp configured,
+    # the effective window is additionally capped to the overlap between load
+    # and temperature history.
     history_days: int = Field(default=60, ge=1, le=365)
 
 
@@ -172,19 +170,10 @@ class Settings(BaseModel):
     entities: Entities
     battery: Battery
     grid: Grid
-    load_profile: LoadProfile
+    load_forecast: LoadForecast = LoadForecast()
     optimizer: Optimizer = Optimizer()
     spike: Spike = Spike()
     log_level: Literal["debug", "info", "warning", "error"] = "info"
-
-    @model_validator(mode="after")
-    def _history_source_needs_load_entity(self) -> Self:
-        if self.load_profile.source == "history" and not self.entities.load_power:
-            raise ValueError(
-                "load_profile.source: history requires entities.load_power "
-                "(a house load power sensor in W or kW)"
-            )
-        return self
 
 
 DEV_OPTIONS_FALLBACK = "dev-options.json"

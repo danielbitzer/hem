@@ -12,7 +12,7 @@ What you'll end up with:
 | Amber Express | Buy/sell prices + Amber's advanced forecast + spike flag | HACS |
 | Open-Meteo Solar Forecast | PV production forecast | HACS |
 | BOM weather (or any `weather.*` + outdoor temp sensor) | Hourly temperature forecast + observed outdoor temperature | HACS |
-| Battery integration | SoC %, battery power, (optional) house load | e.g. mkaiser Sungrow |
+| Battery integration | SoC %, battery power, house load (load learning) | e.g. mkaiser Sungrow |
 | **HEM add-on** | The optimizer + recommendation sensors + dashboard | this repo |
 | Actuator automation | Turns recommendations into inverter control | blueprint, later |
 
@@ -103,13 +103,14 @@ Two things to check:
   If it reads *negative* while charging (mkaiser default), HEM's default
   `power_convention: charge_negative` is correct; if positive, set
   `charge_positive`.
-- **Optional but recommended — house load sensor** (e.g. mkaiser's
-  `sensor.load_power`): lets HEM learn your real hourly load profile from
-  history (`load_profile.source: history`) instead of hand-typed hourly
-  values. Together with the outdoor temperature sensor from step 4
+- **House load sensor** (e.g. mkaiser's `sensor.load_power`): HEM learns your
+  hourly load profile from its history — there is no manual profile to type
+  in. Together with the outdoor temperature sensor from step 4
   (`entities.outdoor_temp`), HEM also learns your house's temperature
   response — how much load heatwaves and cold snaps add — and applies it to
-  forecast temperatures.
+  forecast temperatures. Without a load sensor HEM still plans, but assumes
+  **zero house load** and shows a warning on the dashboard; raise
+  `battery.soc_min` to keep a comfort buffer until you can provide one.
 
 ## 6. Install the HEM add-on
 
@@ -122,8 +123,8 @@ Two things to check:
      can raise the cap during confirmed spikes only), efficiency, SoC bounds,
      wear cost.
    - `grid.*` — your connection's import limit and DNSP export limit.
-   - `load_profile` — either type in hourly kW values, or set
-     `source: history` + `entities.load_power` to learn them.
+   - `load_forecast.history_days` — how much history the daily load learning
+     reads (default 60 days; capped to the load/temperature overlap).
    - `spike.*` — the spike-reserve hedge; defaults are sane, see the
      Documentation tab.
 3. Start the add-on and watch the log: you should see `cycle ok: action=...`
@@ -161,8 +162,8 @@ uv run python -m hem.backtest.cli --history ./data/history
 
 It reports $/day for no-battery, naive self-consumption, and HEM, plus the
 spike capture rate. **Do not wire up actuation until HEM beats
-self-consumption on your recorded data** — tune wear cost, spike reserve, and
-load profile first if it doesn't.
+self-consumption on your recorded data** — tune wear cost and spike reserve
+(and make sure load learning is active) first if it doesn't.
 
 ## 8. Actuation (after the gate)
 

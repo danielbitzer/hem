@@ -15,7 +15,7 @@ from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
 from hem.adapters.weather import WeatherAdapter, WeatherParseError
 from hem.config import EnvSettings, load_settings, resolve_connection
-from hem.forecast.load import BaselineLoadForecaster, default_timezone
+from hem.forecast.load import build_load_forecaster, default_timezone
 from hem.ha.client import HaClient
 from hem.timegrid import TimeGrid, coverage, resample_mean, resample_previous
 
@@ -33,13 +33,21 @@ async def main() -> None:
         sungrow = SungrowAdapter(client, settings.entities, settings.battery)
         weather = WeatherAdapter(client, settings.entities)
 
+        load_forecaster = build_load_forecaster(
+            client,
+            settings.entities.load_power,
+            tz,
+            outdoor_temp=settings.entities.outdoor_temp,
+            history_days=settings.load_forecast.history_days,
+        )
         prices, pv, battery = await asyncio.gather(
             amber.get_prices(), solar.get_pv(), sungrow.get_battery_state()
         )
+        await load_forecaster.refresh(now)
         try:
             temps_series = await weather.get_temperature_forecast()
         except WeatherParseError as e:
-            print(f"warning: no temperature forecast ({e}); load rules disabled")
+            print(f"warning: no temperature forecast ({e}); temperature response disabled")
             temps_series = None
 
     horizon = timedelta(hours=settings.optimizer.horizon_hours)
@@ -50,9 +58,11 @@ async def main() -> None:
     buy[0], sell[0] = prices.current_buy, prices.current_sell
     pv_kw = resample_mean(pv, grid)
     temps = resample_previous(temps_series, grid) if temps_series else None
-    load_kw = BaselineLoadForecaster(settings.load_profile, tz).forecast(grid, temps)
+    load_kw = load_forecaster.forecast(grid, temps)
 
     print(f"now={now.isoformat()}  local tz={tz}  steps={len(grid)}")
+    if load_forecaster.status != "learned":
+        print(f"warning: load forecast {load_forecaster.status} — load column is zero")
     print(
         f"battery: soc={battery.soc_frac:.1%} power={battery.power_kw:+.2f}kW "
         f"capacity={battery.capacity_kwh}kWh  live_spike={prices.live_spike}"

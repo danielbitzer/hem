@@ -27,11 +27,11 @@ All via existing HA integrations — no glue automations needed:
   (`watts` attribute, 15-min resolution).
 - **Battery**: any integration exposing SoC and battery power, e.g. Sungrow
   SHx via the [mkaiser Modbus package](https://github.com/mkaiser/Sungrow-SHx-Inverter-Modbus-Home-Assistant).
-- **Load**: a configurable hourly profile — or learned daily from your actual
-  consumption (`load_profile.source: history`): hour-of-day averages from
-  months of long-term statistics of a house-load sensor, plus an optional
-  learned temperature response (kW per degree of cooling/heating) applied to
-  the forecast temps from any hourly `weather.*` entity.
+- **Load**: learned daily from your actual consumption — hour-of-day averages
+  from months of long-term statistics of a house-load sensor, plus an
+  optional learned temperature response (kW per degree of cooling/heating)
+  applied to the forecast temps from any hourly `weather.*` entity. No load
+  sensor → HEM plans with zero load and warns on the dashboard.
 
 ## How the optimizer works
 

@@ -27,6 +27,9 @@
           padding: 12px; margin-bottom: 14px; }
   .card h2 { font-size: 13px; margin: 0 0 4px; color: var(--muted); font-weight: 600; }
   #error { color: #c0392b; padding: 24px; text-align: center; display: none; }
+  #warning { display: none; background: rgba(230, 126, 34, 0.12); border: 1px solid #e67e22;
+             color: inherit; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;
+             font-size: 13px; }
   .action-charge { color: #2e86de; } .action-discharge { color: #10ac84; }
   .action-idle { color: var(--muted); } .action-curtail { color: #e67e22; }
 </style>
@@ -35,6 +38,7 @@
 <h1>Home Energy Manager</h1>
 <div class="sub" id="meta">loading…</div>
 <div id="error"></div>
+<div id="warning"></div>
 <div class="tiles" id="tiles" style="display:none">
   <div class="tile"><div class="k">Action now</div><div class="v" id="t-action">–</div></div>
   <div class="tile"><div class="k">Battery setpoint</div><div class="v" id="t-power">–</div></div>
@@ -117,6 +121,17 @@ async function refresh() {
     metaText += ` · price forecast ends ${new Date(forecastEnd).toLocaleString()} (tail is held flat)`;
   }
   document.querySelector("#meta").textContent = metaText;
+  const warnEl = document.querySelector("#warning");
+  if (meta.load_forecast && meta.load_forecast !== "learned") {
+    warnEl.textContent = meta.load_forecast === "unconfigured"
+      ? "⚠ Load forecasting unavailable — no house load sensor configured (entities.load_power). "
+        + "Plans assume ZERO house load; consider raising battery.soc_min until learning is set up."
+      : "⚠ Load forecast not learned yet — waiting for usable history from the load sensor. "
+        + "Plans assume ZERO house load; consider raising battery.soc_min until learning kicks in.";
+    warnEl.style.display = "block";
+  } else {
+    warnEl.style.display = "none";
+  }
   const actionEl = document.querySelector("#t-action");
   actionEl.textContent = step0.action;
   actionEl.className = "v action-" + step0.action;
