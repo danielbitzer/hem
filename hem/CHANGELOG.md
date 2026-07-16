@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.3
+
+- Dashboard: new "Planned mode" timeline strip — the horizon colored by
+  action (charge/discharge/hold/curtail/idle) at a glance.
+- Dashboard: the setpoint tile shows "—" during idle/curtail (the battery is
+  under self-consumption control; there is no commanded setpoint).
+- Blueprint: the grid-connection input is a single binary sensor now
+  (was a list) — re-select your sensor after re-importing.
+
 ## 0.1.2
 
 - **New `hold` action**: the battery stays deliberately inactive while PV

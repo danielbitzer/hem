@@ -36,7 +36,7 @@
 # a crashed HEM can never leave your inverter stuck in forced mode or capped
 # at zero export. The failsafe check runs every 5 minutes even without sensor
 # changes, and also covers the sensors disappearing entirely (HA restart
-# while HEM is down). Optionally supply grid-connection sensor(s): during a
+# while HEM is down). Optionally supply a grid-connection sensor: during a
 # grid outage the inverter likewise reverts to idle/self-consumption —
 # forced grid moves make no sense islanded.
 #
@@ -81,19 +81,19 @@ blueprint:
           max: 60
           unit_of_measurement: min
       default: 10
-    grid_sensors:
-      name: Grid connection sensor(s) (optional)
+    grid_sensor:
+      name: Grid connection sensor (optional)
       description: >-
-        Binary sensor(s) that are ON while the grid is up. If ANY reads OFF
+        A binary sensor that is ON while the grid is up. When it reads OFF
         (grid outage / islanded), the inverter reverts to idle /
         self-consumption to protect the battery — forced modes make no sense
-        off-grid. Unavailable sensors are treated as connected, so a flaky
-        sensor can't idle your plan; leave empty to disable the check.
-      default: []
+        off-grid. Unavailable/unknown is treated as connected, so a flaky
+        sensor can't idle your plan. Leave at the default (a nonexistent
+        entity) to disable the check.
+      default: binary_sensor.none
       selector:
         entity:
           domain: binary_sensor
-          multiple: true
     charge_actions:
       name: Charge actions
       description: Put the inverter into forced charge at power_w watts.
@@ -150,8 +150,9 @@ triggers:
     entity_id: !input setpoint_sensor
     to: null
   # grid drops (or returns): react immediately, not at the next plan change
+  # (the default binary_sensor.none doesn't exist, so this never fires)
   - trigger: state
-    entity_id: !input grid_sensors
+    entity_id: !input grid_sensor
     to: null
   # failsafe sweep: catches a dead/stale HEM even when no sensor ever changes
   # again (including the sensors disappearing after an HA restart)
@@ -163,15 +164,15 @@ variables:
   setpoint_sensor: !input setpoint_sensor
   status_sensor: !input status_sensor
   max_heartbeat_age_minutes: !input max_heartbeat_age_minutes
-  grid_sensors: !input grid_sensors
+  grid_sensor: !input grid_sensor
   hem_alive: >-
     {% set s = states(status_sensor) %}
     {% set hb = state_attr(status_sensor, 'heartbeat') %}
     {{ s == 'ok' and hb is not none
        and (now() - (hb | as_datetime)) < timedelta(minutes=max_heartbeat_age_minutes | int) }}
-  # connected unless a sensor explicitly says OFF (unavailable != outage)
-  grid_connected: >-
-    {{ expand(grid_sensors) | selectattr('state', 'eq', 'off') | list | count == 0 }}
+  # connected unless the sensor explicitly says OFF (unavailable/unknown/
+  # nonexistent != outage)
+  grid_connected: "{{ states(grid_sensor) != 'off' }}"
   action: >-
     {{ states(action_sensor) if hem_alive and grid_connected else 'idle' }}
   # power is read from the ACTION sensor's attributes (published atomically

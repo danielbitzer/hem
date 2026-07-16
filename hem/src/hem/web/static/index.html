@@ -47,6 +47,7 @@
   <div class="tile"><div class="k">Horizon cost</div><div class="v" id="t-cost">–</div></div>
   <div class="tile"><div class="k">Forecast load</div><div class="v" id="t-load">–</div></div>
 </div>
+<div class="card"><h2>Planned mode</h2><div id="chart-mode"></div></div>
 <div class="card"><h2>Prices $/kWh (buy / sell)</h2><div id="chart-prices"></div></div>
 <div class="card"><h2>Forecast kW (PV / load)</h2><div id="chart-power"></div></div>
 <div class="card"><h2>Planned battery power kW (+charge / −discharge) &amp; grid flows</h2><div id="chart-battery"></div></div>
@@ -137,7 +138,11 @@ async function refresh() {
   const actionEl = document.querySelector("#t-action");
   actionEl.textContent = step0.action;
   actionEl.className = "v action-" + step0.action;
-  document.querySelector("#t-power").textContent = step0.power_kw.toFixed(2) + " kW";
+  // idle/curtail hand the battery to self-consumption mode: there is no
+  // commanded setpoint, so showing one would be fiction
+  document.querySelector("#t-power").textContent =
+    (step0.action === "idle" || step0.action === "curtail")
+      ? "—" : step0.power_kw.toFixed(2) + " kW";
   const cap = meta.capacity_kwh;
   document.querySelector("#t-soc").textContent = cap
     ? (100 * step0.soc_end / cap).toFixed(0) + "% · " + step0.soc_end.toFixed(1) + " kWh"
@@ -156,6 +161,44 @@ async function refresh() {
       label: { text: "forecast padded", style: { color: "var(--muted)", background: "transparent" } },
     }],
   } : {};
+
+  // Planned-mode timeline: one colored segment per contiguous action run.
+  // Kept OUT of the "hem" sync group — rangeBar's category axis doesn't
+  // share a cursor with the datetime line charts.
+  const ACTION_COLORS = { charge: "#2e86de", discharge: "#10ac84",
+                          idle: dark ? "#5c5c66" : "#c8c8cd",
+                          hold: "#8e44ad", curtail: "#e67e22" };
+  const segments = [];
+  for (const x of iv) {
+    const startMs = new Date(x.start).getTime(), endMs = new Date(x.end).getTime();
+    const last = segments[segments.length - 1];
+    if (last && last.action === x.action && last.y[1] === startMs) {
+      last.y[1] = endMs;
+    } else {
+      segments.push({ x: "mode", y: [startMs, endMs], action: x.action,
+                      fillColor: ACTION_COLORS[x.action] || "#8e8e93" });
+    }
+  }
+  render("chart-mode", {
+    chart: { id: "mode", height: 110, type: "rangeBar", background: "transparent",
+             animations: { enabled: false }, toolbar: { show: false }, zoom: { enabled: false } },
+    theme: { mode: dark ? "dark" : "light" },
+    plotOptions: { bar: { horizontal: true, barHeight: "55%", rangeBarGroupRows: true } },
+    xaxis: { type: "datetime", labels: { datetimeUTC: false } },
+    yaxis: { labels: { show: false } },
+    grid: { borderColor: dark ? "#2c2c30" : "#e3e3e8" },
+    dataLabels: { enabled: false },
+    legend: { show: false },
+    tooltip: {
+      custom: ({ seriesIndex, dataPointIndex, w }) => {
+        const d = w.config.series[seriesIndex].data[dataPointIndex];
+        const fmt = ms => new Date(ms).toLocaleString(undefined,
+          { weekday: "short", hour: "2-digit", minute: "2-digit" });
+        return '<div style="padding:6px 10px"><b>' + d.action + "</b><br>" +
+               fmt(d.y[0]) + " → " + fmt(d.y[1]) + "</div>";
+      },
+    },
+  }, [{ name: "mode", data: segments }]);
 
   render("chart-prices", base("prices", {
     colors: ["#e74c3c", "#10ac84"],

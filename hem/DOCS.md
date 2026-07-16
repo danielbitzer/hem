@@ -181,13 +181,12 @@ are missing (HA restarted while HEM was down), your *idle* actions run (after
 lifting any export cap) — so a dead add-on can never leave the inverter stuck
 in forced mode or curtailed. Keep the idle sequence simple and idempotent.
 
-Optionally point the blueprint at one or more **grid-connection binary
-sensors** (ON while the grid is up — most inverter integrations expose one).
-During a grid outage the automation immediately reverts to
-idle/self-consumption and re-asserts it every 5 minutes: forced charge or
-discharge is meaningless (and battery-hostile) while islanded. Sensors
-reading `unavailable` are treated as connected so a flaky sensor can't idle
-your plan.
+Optionally point the blueprint at a **grid-connection binary sensor** (ON
+while the grid is up — most inverter integrations expose one). During a grid
+outage the automation immediately reverts to idle/self-consumption and
+re-asserts it every 5 minutes: forced charge or discharge is meaningless
+(and battery-hostile) while islanded. A sensor reading `unavailable` is
+treated as connected so a flaky sensor can't idle your plan.
 
 Example sequences for the mkaiser Sungrow package (verify entity IDs and
 option strings against your install — they vary between package versions):
