@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.5
+
+- **`sensor.hem_plan` removed**: nothing consumed it (the dashboard reads the
+  plan from the add-on directly) and its large attribute churned the recorder
+  every 5 minutes. If you added a `recorder: exclude:` for it, you can drop
+  that; the entity disappears on your next HA restart.
+- Dashboard: the mode strip, SoC chart, and line charts now share one y-axis
+  gutter and the exact plan time-span, so all charts align column-for-column.
+  The SoC right-hand % axis is gone (it forced the plot out of alignment) —
+  the tooltip shows kWh and % instead. Mode-strip tooltip follows the cursor.
+
 ## 0.1.4
 
 - **`hold` replaced by `no_charge`**: the earlier `hold` action froze the
