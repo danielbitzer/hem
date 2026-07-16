@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.6
 
 - Dashboard: a load-forecast info line under the header — how many days of
   history the daily learn used, from which sensor and source (long-term
