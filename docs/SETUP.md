@@ -11,7 +11,7 @@ What you'll end up with:
 |---|---|---|
 | Amber Express | Buy/sell prices + Amber's advanced forecast + spike flag | HACS |
 | Open-Meteo Solar Forecast | PV production forecast | HACS |
-| A `weather.*` entity | Hourly temperature forecast (drives the learned temperature response) | Built-in |
+| BOM weather (or any `weather.*` + outdoor temp sensor) | Hourly temperature forecast + observed outdoor temperature | HACS |
 | Battery integration | SoC %, battery power, (optional) house load | e.g. mkaiser Sungrow |
 | **HEM add-on** | The optimizer + recommendation sensors + dashboard | this repo |
 | Actuator automation | Turns recommendations into inverter control | blueprint, later |
@@ -57,13 +57,31 @@ no advanced-price mode, which is not good enough to optimize against.
 3. Note `sensor.<name>_energy_production_today` and `..._tomorrow`. HEM uses
    their `watts` attribute (15-min resolution), not the state value.
 
-## 4. Weather (temperature forecast)
+## 4. Weather — BOM (forecast + outdoor temperature)
 
-Any `weather.*` entity that supports **hourly** forecasts works; the built-in
-Met.no ("Forecast Home") entity does. HEM calls the `weather.get_forecasts`
-service on it. Only temperature is used, and only by the learned temperature
-response of the load forecast (see step 5) — if the entity is unavailable HEM
-just plans without it.
+HEM wants two temperature entities:
+
+- a **`weather.*` entity** with hourly forecasts (`entities.weather`) — the
+  *forecast* temperatures that the learned temperature response is applied to;
+- an **outdoor temperature sensor** (`entities.outdoor_temp`) — the *observed*
+  temperatures the response is learned from.
+
+For Australia (this is an Amber-focused product, after all), the
+[Bureau of Meteorology integration](https://github.com/bremor/bureau_of_meteorology)
+provides both in one install:
+
+1. HACS → **Bureau of Meteorology** → download, restart.
+2. Add the integration for your location, with the weather entity and
+   observation sensors enabled.
+3. Note the two entity IDs: `weather.<location>` (hourly forecasts) and the
+   observation temperature sensor `sensor.<location>_temp` (records long-term
+   statistics, which the learning reads).
+
+Any other combination works too — e.g. the built-in Met.no entity for the
+forecast plus a physical outdoor sensor — as long as the weather entity
+answers `weather.get_forecasts` hourly and the temperature sensor has
+`state_class: measurement`. If either is missing, HEM still plans; it just
+loses the temperature response.
 
 ## 5. Battery and inverter sensors
 
@@ -88,10 +106,10 @@ Two things to check:
 - **Optional but recommended — house load sensor** (e.g. mkaiser's
   `sensor.load_power`): lets HEM learn your real hourly load profile from
   history (`load_profile.source: history`) instead of hand-typed hourly
-  values. Add an **outdoor temperature sensor** (`entities.outdoor_temp`, any
-  sensor with long-term statistics) and HEM also learns your house's
-  temperature response — how much load heatwaves and cold snaps add — and
-  applies it to forecast temperatures.
+  values. Together with the outdoor temperature sensor from step 4
+  (`entities.outdoor_temp`), HEM also learns your house's temperature
+  response — how much load heatwaves and cold snaps add — and applies it to
+  forecast temperatures.
 
 ## 6. Install the HEM add-on
 
