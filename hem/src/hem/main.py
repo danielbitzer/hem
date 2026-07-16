@@ -110,6 +110,7 @@ async def cycle(
         "price_forecast_end": forecast_end,
         "coverage": data.coverage,
         "load_forecast": data.load_forecast_status,
+        "load_forecast_info": data.load_forecast_info,
     }
 
     # Publishing IS the output: the user's actuator automation (see
@@ -184,7 +185,6 @@ async def run() -> None:
                     settings.entities.load_power,
                     tz,
                     outdoor_temp=settings.entities.outdoor_temp,
-                    history_days=settings.load_forecast.history_days,
                 ),
             )
             watcher = PriceWatcher(settings)

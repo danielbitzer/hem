@@ -49,18 +49,20 @@ Limits of your **grid connection**, distinct from the battery's power limits:
 inverter DC side); the grid limits cap the *net AC flow at the meter*. The
 optimizer respects both simultaneously.
 
-### `load_forecast`
+### Load forecasting
 
 The household load forecast is **learned from your actual consumption** —
-there is no hand-typed profile. Once a day HEM reads hourly long-term
-statistics of `entities.load_power` (a house load sensor in W or kW — e.g.
-the mkaiser package's `sensor.load_power`) over the last `history_days` (60)
-and builds hour-of-day averages, split weekday/weekend, in your local
-timezone. Long-term statistics survive recorder purging, so the window can
-genuinely be months; if the sensor has no `state_class` (hence no
-statistics), HEM falls back to raw recorder history (limited to your purge
-window, ~10 days). Hours with under 2 observed hours of data use the mean of
-the hours that do have data.
+there is no hand-typed profile and nothing to configure beyond the entities.
+Once a day HEM reads hourly long-term statistics of `entities.load_power` (a
+house load sensor in W or kW — e.g. the mkaiser package's `sensor.load_power`)
+over the last **365 days** — the window self-caps to however much history the
+sensor actually has — and builds hour-of-day averages, split weekday/weekend,
+in your local timezone. Long-term statistics survive recorder purging, so the
+window genuinely grows toward a full year; if the sensor has no `state_class`
+(hence no statistics), HEM falls back to raw recorder history (limited to
+your purge window, ~10 days). Hours with under 2 observed hours of data use
+the mean of the hours that do have data. The dashboard shows what each learn
+used: window length, data source, and the fitted temperature response.
 
 Add `entities.outdoor_temp` (any outdoor temperature sensor with long-term
 statistics) and the daily learn also fits a **temperature response**: how many

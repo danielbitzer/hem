@@ -38,6 +38,7 @@
 <body>
 <h1>Home Energy Manager</h1>
 <div class="sub" id="meta">loading…</div>
+<div class="sub" id="load-meta" style="display:none"></div>
 <div id="error"></div>
 <div id="warning"></div>
 <div class="tiles" id="tiles" style="display:none">
@@ -131,6 +132,20 @@ async function refresh() {
     metaText += ` · price forecast ends ${new Date(forecastEnd).toLocaleString()} (tail is held flat)`;
   }
   document.querySelector("#meta").textContent = metaText;
+  const lf = meta.load_forecast_info || {};
+  const lfEl = document.querySelector("#load-meta");
+  if (meta.load_forecast === "learned" && lf.window_days) {
+    let s = `load forecast: learned from ${Math.round(lf.window_days)} days of `
+          + `${lf.source} (${lf.load_entity}) · ${lf.buckets} hour buckets`;
+    s += lf.temp_response
+      ? ` · temperature response from ${lf.temp_entity} — up to `
+        + `${lf.heat_kw_per_deg} kW/°C heating, ${lf.cool_kw_per_deg} kW/°C cooling`
+      : " · no temperature response";
+    lfEl.textContent = s;
+    lfEl.style.display = "block";
+  } else {
+    lfEl.style.display = "none";
+  }
   const warnEl = document.querySelector("#warning");
   if (meta.load_forecast && meta.load_forecast !== "learned") {
     warnEl.textContent = meta.load_forecast === "unconfigured"

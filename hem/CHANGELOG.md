@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Dashboard: a load-forecast info line under the header — how many days of
+  history the daily learn used, from which sensor and source (long-term
+  statistics vs recorder history), hour-bucket coverage, and the fitted
+  temperature response (sensor + peak kW/°C heating/cooling).
+- **`load_forecast.history_days` option removed**: learning now always reads
+  up to 365 days and self-caps to the history that actually exists — more
+  data is strictly better, so there was nothing to configure. If the add-on
+  complains about an unknown option after updating, remove the
+  `load_forecast:` section from its Configuration (⋮ → Edit in YAML).
 - **Backtesting removed** (`hem.backtest`, the `/data/history` JSONL recorder,
   and the `HEM_DATA_DIR` env var): the project is validated by reviewing the
   dry-run dashboard and monitoring live behaviour instead of programmatic

@@ -322,6 +322,13 @@ async def test_lts_learning_with_temperature_response():
         await fc.refresh(datetime(2026, 7, 20, 0, 0, tzinfo=UTC))
         assert fc.status == "learned"
         assert len(fake.history_requests) == 0  # LTS path, no raw history needed
+        # learn metadata surfaced to the dashboard
+        info = fc.details
+        assert info["source"] == "statistics"
+        assert info["temp_response"] is True
+        assert info["temp_entity"] == "sensor.outdoor_temp"
+        assert info["window_days"] > 0
+        assert info["hours_used"] > 0
         grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)
         hot = fc.forecast(grid, np.array([26.0, 26.0]))
         mild = fc.forecast(grid, np.array([20.0, 20.0]))
@@ -339,6 +346,8 @@ async def test_lts_unavailable_falls_back_to_raw_history():
         fc = HistoryLoadForecaster(client, "sensor.load_power", ADELAIDE)
         await fc.refresh(NOW)
         assert len(fake.history_requests) == 1
+        assert fc.details["source"] == "recorder history"
+        assert fc.details["temp_response"] is False
         grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)
         out = fc.forecast(grid, None)
     assert out[1] == pytest.approx(1.5)  # learned from raw history

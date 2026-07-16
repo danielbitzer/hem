@@ -16,14 +16,6 @@ configuration:
     description: >-
       Net import/export limits at the meter (connection capacity and DNSP
       export limit) — distinct from the battery power limits.
-  load_forecast:
-    name: Load forecast learning
-    description: >-
-      The load forecast is learned from entities.load_power history over
-      history_days (adding entities.outdoor_temp also learns a temperature
-      response applied to forecast temperatures). Without a load sensor HEM
-      plans with zero house load and shows a warning — raise battery.soc_min
-      until learning is active.
   optimizer:
     name: Optimizer settings
     description: Horizon, solver timeout and behavioral thresholds.

@@ -90,6 +90,7 @@ class FixedLoadForecaster:
     """Constant-load stand-in so planner tests keep deterministic economics."""
 
     status = "learned"
+    details = {}
 
     def __init__(self, kw: float = 0.5):
         self._kw = kw

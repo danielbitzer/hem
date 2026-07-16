@@ -51,11 +51,6 @@ options:
     high_price_threshold: 1.0
     reserve_penalty_per_kwh: 0.5
     discharge_kw: 0.0
-  # Supervisor requires every non-optional schema SECTION to exist in options
-  # (only `str?`-style keys may be omitted), so this must stay even though
-  # all its fields have defaults.
-  load_forecast:
-    history_days: 60
   log_level: info
 schema:
   entities:
@@ -83,8 +78,6 @@ schema:
   grid:
     import_limit_kw: float(0.1,1000)
     export_limit_kw: float(0,1000)
-  load_forecast:
-    history_days: int(1,365)?
   optimizer:
     horizon_hours: int(2,72)
     terminal_soc_value: str

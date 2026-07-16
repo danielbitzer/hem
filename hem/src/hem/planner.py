@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -104,6 +104,8 @@ class CycleData:
     # anything but "learned" means the plan assumes zero house load — surfaced
     # as a warning on the dashboard and hem_status
     load_forecast_status: str = "learned"
+    # how the model was learned (window, source, temp response) — dashboard
+    load_forecast_info: dict = field(default_factory=dict)
 
 
 class Planner:
@@ -217,6 +219,7 @@ class Planner:
             price_forecast_end=min(prices.buy.end, prices.sell.end),
             coverage=cov,
             load_forecast_status=self._load_forecaster.status,
+            load_forecast_info=self._load_forecaster.details,
         )
 
     def _discharge_caps(self, steps: int, live_spike: bool) -> np.ndarray | None:

@@ -44,15 +44,10 @@ def test_invalid_soc_bounds_rejected(tmp_path: Path):
         load_settings(write_options(tmp_path, options))
 
 
-def test_load_forecast_defaults_and_no_load_sensor_is_valid(tmp_path: Path):
+def test_no_load_sensor_is_valid(tmp_path: Path):
     # no load sensor is a valid (degraded) config — HEM plans with zero load
     settings = load_settings(write_options(tmp_path, MINIMAL_OPTIONS))
     assert settings.entities.load_power == ""
-    assert settings.load_forecast.history_days == 60
-    options = json.loads(json.dumps(MINIMAL_OPTIONS))
-    options["load_forecast"] = {"history_days": 400}
-    with pytest.raises(ValueError):
-        load_settings(write_options(tmp_path, options))
 
 
 def test_missing_options_file_message(tmp_path: Path):

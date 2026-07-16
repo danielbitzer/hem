@@ -29,7 +29,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
@@ -51,6 +51,10 @@ MIN_BUCKET_HOURS = 2.0
 MIN_TEMP_HOURS = 72
 # Minimum hourly statistics rows to prefer LTS over raw recorder history.
 MIN_STATS_HOURS = 24
+# How far back each learn reads. Not configurable: more history is strictly
+# better (the window self-caps to what the sensors actually have), and a year
+# bounds the query while covering every season.
+HISTORY_DAYS = 365
 REFRESH_INTERVAL = timedelta(hours=24)
 RETRY_INTERVAL = timedelta(minutes=30)
 # Unit plausibility: no house has a median hourly load above ~50 kW or below
@@ -94,6 +98,11 @@ class LoadForecaster(Protocol):
     @property
     def status(self) -> LoadForecastStatus: ...
 
+    @property
+    def details(self) -> dict[str, Any]:
+        """How the current model was learned (for the dashboard); {} if none."""
+        ...
+
     async def refresh(self, now: datetime) -> None:
         """Update any learned state (rate-limited internally; never raises)."""
         ...
@@ -107,6 +116,7 @@ class UnconfiguredLoadForecaster:
     """No load sensor: plan with zero load and say so loudly."""
 
     status: LoadForecastStatus = "unconfigured"
+    details: dict[str, Any] = {}
 
     async def refresh(self, now: datetime) -> None:
         return None
@@ -168,6 +178,9 @@ class LoadModel:
     # highest hourly load ever observed — predictions never extrapolate past
     # it, no matter what the forecast temperature says
     max_kw: float = float("inf")
+    # learn-window facts, surfaced on the dashboard
+    window_days: float = 0.0  # span of the data actually fitted
+    hours_used: int = 0  # hourly rows in that window (0 for raw history)
 
     @property
     def known_buckets(self) -> int:
@@ -283,6 +296,9 @@ def fit_load_model(
         )
 
     max_kw = max((max(r[1], 0.0) for r in rows), default=0.0)
+    window_days = (
+        (rows[-1][0] + timedelta(hours=1) - rows[0][0]).total_seconds() / 86400 if rows else 0.0
+    )
     count = np.zeros((2, 24))  # observed hours per bucket (rows are split)
     load_sum = np.zeros((2, 24))
     cdh_sum = np.zeros((2, 24))
@@ -313,6 +329,8 @@ def fit_load_model(
         balance_cool_c=balance_cool_c,
         balance_heat_c=balance_heat_c,
         max_kw=max_kw,
+        window_days=window_days,
+        hours_used=len(rows),
     )
     if not use_temp:
         return model
@@ -414,11 +432,11 @@ def _to_celsius(value: float, unit: str | None) -> float | None:
 class HistoryLoadForecaster:
     """Learns household load from history, refreshed daily.
 
-    Data source preference per refresh: hourly long-term statistics over
-    load_forecast.history_days (months-capable), then raw recorder history
-    (~recorder purge window). Refresh is deliberately never fatal: on any
-    failure the last learned model keeps serving (or zero load while status
-    is "pending") and a retry happens after RETRY_INTERVAL.
+    Data source preference per refresh: hourly long-term statistics over the
+    last HISTORY_DAYS (months-capable), then raw recorder history (~recorder
+    purge window). Refresh is deliberately never fatal: on any failure the
+    last learned model keeps serving (or zero load while status is "pending")
+    and a retry happens after RETRY_INTERVAL.
     """
 
     def __init__(
@@ -428,19 +446,45 @@ class HistoryLoadForecaster:
         tz: ZoneInfo,
         *,
         temp_entity_id: str = "",
-        history_days: int = 60,
     ):
         self._client = client
         self._entity_id = entity_id
         self._temp_entity_id = temp_entity_id
         self._tz = tz
-        self._days = history_days
+        self._days = HISTORY_DAYS
         self._model: LoadModel | None = None
         self._next_refresh: datetime | None = None
+        self._source = ""
+        self._learned_at: datetime | None = None
 
     @property
     def status(self) -> LoadForecastStatus:
         return "learned" if self._model is not None else "pending"
+
+    @property
+    def details(self) -> dict[str, Any]:
+        model = self._model
+        if model is None:
+            return {}
+        info: dict[str, Any] = {
+            "load_entity": self._entity_id,
+            "source": self._source,
+            "window_days": round(model.window_days, 1),
+            "hours_used": model.hours_used,
+            "buckets": f"{model.known_buckets}/48",
+            "temp_response": model.has_temp_response,
+        }
+        if self._learned_at is not None:
+            info["learned_at"] = self._learned_at.isoformat()
+        if model.has_temp_response:
+            info["temp_entity"] = self._temp_entity_id
+            info["heat_kw_per_deg"] = round(
+                max(model.heat_by_hour or [model.heat_kw_per_deg]), 3
+            )
+            info["cool_kw_per_deg"] = round(
+                max(model.cool_by_hour or [model.cool_kw_per_deg]), 3
+            )
+        return info
 
     async def refresh(self, now: datetime) -> None:
         if self._next_refresh and now < self._next_refresh:
@@ -451,6 +495,7 @@ class HistoryLoadForecaster:
         try:
             async with asyncio.timeout(LEARN_TIMEOUT_S):
                 self._model = await self._learn(now)
+            self._learned_at = now
             self._next_refresh = now + REFRESH_INTERVAL
             if self._model.has_temp_response:
                 heat_peak = max(self._model.heat_by_hour or [self._model.heat_kw_per_deg])
@@ -494,6 +539,7 @@ class HistoryLoadForecaster:
     async def _learn(self, now: datetime) -> LoadModel:
         try:
             model = await self._learn_statistics(now)
+            self._source = "statistics"
         except Exception as e:  # noqa: BLE001 - LTS is an upgrade, not a requirement
             log.info(
                 "long-term statistics unavailable for %s (%s); falling back to "
@@ -502,6 +548,7 @@ class HistoryLoadForecaster:
                 e,
             )
             model = await self._learn_raw_history(now)
+            self._source = "recorder history"
         if model.known_buckets == 0:
             raise ValueError("no hour bucket reached the minimum observed hours")
         return model
@@ -566,6 +613,7 @@ class HistoryLoadForecaster:
             cdh_mean=np.zeros((2, 24)),
             hdh_mean=np.zeros((2, 24)),
             max_kw=max((max(v, 0.0) for _, v in samples), default=0.0),
+            window_days=(samples[-1][0] - samples[0][0]).total_seconds() / 86400,
         )
 
     def forecast(self, grid: TimeGrid, temps_c: np.ndarray | None) -> np.ndarray:
@@ -588,7 +636,6 @@ def build_load_forecaster(
     tz: ZoneInfo,
     *,
     outdoor_temp: str = "",
-    history_days: int = 60,
 ) -> LoadForecaster:
     if not load_power:
         log.warning(
@@ -597,13 +644,7 @@ def build_load_forecaster(
             "load sensor; consider raising battery.soc_min meanwhile."
         )
         return UnconfiguredLoadForecaster()
-    return HistoryLoadForecaster(
-        client,
-        load_power,
-        tz,
-        temp_entity_id=outdoor_temp,
-        history_days=history_days,
-    )
+    return HistoryLoadForecaster(client, load_power, tz, temp_entity_id=outdoor_temp)
 
 
 def default_timezone() -> ZoneInfo:

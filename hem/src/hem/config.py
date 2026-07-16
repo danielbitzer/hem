@@ -119,15 +119,6 @@ class Grid(BaseModel):
     export_limit_kw: float = Field(ge=0)
 
 
-class LoadForecast(BaseModel):
-    # Learning window. Hourly long-term statistics reach months back; the raw
-    # recorder-history fallback is capped by the recorder purge window (~10
-    # days) regardless of this value. With entities.outdoor_temp configured,
-    # the effective window is additionally capped to the overlap between load
-    # and temperature history.
-    history_days: int = Field(default=60, ge=1, le=365)
-
-
 class Optimizer(BaseModel):
     horizon_hours: int = Field(default=36, ge=2, le=72)
     terminal_soc_value: Literal["auto"] | float = "auto"
@@ -152,7 +143,6 @@ class Settings(BaseModel):
     entities: Entities
     battery: Battery
     grid: Grid
-    load_forecast: LoadForecast = LoadForecast()
     optimizer: Optimizer = Optimizer()
     spike: Spike = Spike()
     log_level: Literal["debug", "info", "warning", "error"] = "info"

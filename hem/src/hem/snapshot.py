@@ -38,7 +38,6 @@ async def main() -> None:
             settings.entities.load_power,
             tz,
             outdoor_temp=settings.entities.outdoor_temp,
-            history_days=settings.load_forecast.history_days,
         )
         prices, pv, battery = await asyncio.gather(
             amber.get_prices(), solar.get_pv(), sungrow.get_battery_state()

@@ -28,8 +28,5 @@
     "reserve_penalty_per_kwh": 0.5,
     "discharge_kw": 0.0
   },
-  "load_forecast": {
-    "history_days": 60
-  },
   "log_level": "debug"
 }

@@ -124,8 +124,6 @@ Two things to check:
      can raise the cap during confirmed spikes only), efficiency, SoC bounds,
      wear cost.
    - `grid.*` — your connection's import limit and DNSP export limit.
-   - `load_forecast.history_days` — how much history the daily load learning
-     reads (default 60 days; capped to the load/temperature overlap).
    - `spike.*` — the spike-reserve hedge; defaults are sane, see the
      Documentation tab.
 3. Start the add-on and watch the log: you should see `cycle ok: action=...`
