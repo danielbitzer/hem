@@ -32,7 +32,9 @@
 # a crashed HEM can never leave your inverter stuck in forced mode or capped
 # at zero export. The failsafe check runs every 5 minutes even without sensor
 # changes, and also covers the sensors disappearing entirely (HA restart
-# while HEM is down).
+# while HEM is down). Optionally supply grid-connection sensor(s): during a
+# grid outage the inverter likewise reverts to idle/self-consumption —
+# forced grid moves make no sense islanded.
 #
 # Disabling this automation is the master off-switch: HEM goes back to being
 # a pure recommendation engine.
@@ -42,7 +44,8 @@ blueprint:
     Applies sensor.hem_action / sensor.hem_power_setpoint to your inverter
     via action sequences you define, with a built-in heartbeat failsafe that
     reverts to idle when HEM is stale, degraded, or gone. Optional curtail
-    sequences cap export during negative feed-in.
+    sequences cap export during negative feed-in; optional grid-connection
+    sensors revert to idle during a grid outage.
   homeassistant:
     min_version: 2024.10.0  # the `sequence:` grouping action
   domain: automation
@@ -74,6 +77,19 @@ blueprint:
           max: 60
           unit_of_measurement: min
       default: 10
+    grid_sensors:
+      name: Grid connection sensor(s) (optional)
+      description: >-
+        Binary sensor(s) that are ON while the grid is up. If ANY reads OFF
+        (grid outage / islanded), the inverter reverts to idle /
+        self-consumption to protect the battery — forced modes make no sense
+        off-grid. Unavailable sensors are treated as connected, so a flaky
+        sensor can't idle your plan; leave empty to disable the check.
+      default: []
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: true
     charge_actions:
       name: Charge actions
       description: Put the inverter into forced charge at power_w watts.
@@ -119,6 +135,10 @@ triggers:
   - trigger: state
     entity_id: !input setpoint_sensor
     to: null
+  # grid drops (or returns): react immediately, not at the next plan change
+  - trigger: state
+    entity_id: !input grid_sensors
+    to: null
   # failsafe sweep: catches a dead/stale HEM even when no sensor ever changes
   # again (including the sensors disappearing after an HA restart)
   - trigger: time_pattern
@@ -129,13 +149,17 @@ variables:
   setpoint_sensor: !input setpoint_sensor
   status_sensor: !input status_sensor
   max_heartbeat_age_minutes: !input max_heartbeat_age_minutes
+  grid_sensors: !input grid_sensors
   hem_alive: >-
     {% set s = states(status_sensor) %}
     {% set hb = state_attr(status_sensor, 'heartbeat') %}
     {{ s == 'ok' and hb is not none
        and (now() - (hb | as_datetime)) < timedelta(minutes=max_heartbeat_age_minutes | int) }}
+  # connected unless a sensor explicitly says OFF (unavailable != outage)
+  grid_connected: >-
+    {{ expand(grid_sensors) | selectattr('state', 'eq', 'off') | list | count == 0 }}
   action: >-
-    {{ states(action_sensor) if hem_alive else 'idle' }}
+    {{ states(action_sensor) if hem_alive and grid_connected else 'idle' }}
   # power is read from the ACTION sensor's attributes (published atomically
   # with the action, so they can never disagree); the setpoint sensor is the
   # fallback for older HEM versions
@@ -148,12 +172,14 @@ variables:
        if hem_alive else 0 }}
 
 conditions:
-  # The periodic sweep only needs to act when HEM is NOT healthy (failsafe);
-  # while healthy, the state triggers handle every real change. Keeps the
-  # write rate at "only when something changed" + one idle re-assert per 5min
-  # while HEM is down (idempotent by requirement on idle_actions).
+  # The periodic sweep only needs to act when HEM is NOT healthy or the grid
+  # is down (failsafe re-assert); while healthy and on-grid, the state
+  # triggers handle every real change. Keeps the write rate at "only when
+  # something changed" + one idle re-assert per 5min while degraded
+  # (idempotent by requirement on idle_actions).
   - condition: template
-    value_template: "{{ trigger.platform != 'time_pattern' or not hem_alive }}"
+    value_template: >-
+      {{ trigger.platform != 'time_pattern' or not hem_alive or not grid_connected }}
 
 actions:
   - choose:
