@@ -6,11 +6,14 @@ backtester. One line per record: {"ts": ..., "kind": ..., "data": {...}}.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from hem.models import PriceForecast, Series
+
+log = logging.getLogger(__name__)
 
 DEFAULT_DIR = Path("/data/history")
 
@@ -74,5 +77,13 @@ class Recorder:
             return records
         for path in sorted(self._dir.glob("*.jsonl")):
             with path.open() as f:
-                records.extend(json.loads(line) for line in f if line.strip())
+                for n, line in enumerate(f, 1):
+                    if not line.strip():
+                        continue
+                    try:
+                        records.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        # a cycle killed mid-write (timeout, power loss) can
+                        # leave one torn line; don't let it sink the backtest
+                        log.warning("skipping corrupt line %s:%d", path.name, n)
         return records

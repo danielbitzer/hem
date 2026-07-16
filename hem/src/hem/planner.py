@@ -175,18 +175,20 @@ class Planner:
         pv_kw = resample_mean(pv, grid)
         temps = resample_previous(temps_series, grid) if temps_series else None
         load_kw = self._load_forecaster.forecast(grid, temps)
-        # Feasibility guard: load beyond the import limit can't be served in
-        # the power balance (battery may be empty, PV may be zero) and turns
-        # the MILP infeasible. A real house can't exceed its breaker anyway —
-        # a forecast that does means bad sensor data, not bad planning.
-        if np.any(load_kw > self._grid_params.import_limit_kw):
+        # Feasibility guard: the power balance can always serve load up to
+        # import + PV (the battery may be empty, so its discharge doesn't
+        # count); anything beyond that turns the MILP infeasible. Real load
+        # above this bound is impossible at the meter anyway — a forecast
+        # that exceeds it means bad sensor data, not bad planning.
+        supply_cap = self._grid_params.import_limit_kw + pv_kw
+        if np.any(load_kw > supply_cap):
             log.warning(
-                "load forecast peaks at %.1f kW, above the %.1f kW import "
-                "limit; clamping — check the load sensor's units/data",
+                "load forecast peaks at %.1f kW, beyond what import + PV can "
+                "serve (%.1f kW); clamping — check the load sensor's units/data",
                 float(np.max(load_kw)),
-                self._grid_params.import_limit_kw,
+                float(np.max(supply_cap)),
             )
-            load_kw = np.minimum(load_kw, self._grid_params.import_limit_kw)
+            load_kw = np.minimum(load_kw, supply_cap)
 
         inputs = OptimizerInputs(
             dt_hours=grid.dt_hours,
@@ -340,11 +342,11 @@ class Planner:
             plan = self.optimize(data, now)
         except SolverError as e:
             log.error("solver failed: %s", e)
-            plan = self._fallback(now)
+            plan = self.fallback(now)
         self.previous_plan = plan
         return plan
 
-    def _fallback(self, now: datetime) -> Plan:
+    def fallback(self, now: datetime) -> Plan:
         """Shift the previous plan forward, dropping elapsed intervals."""
         prev = self.previous_plan
         if prev is None:

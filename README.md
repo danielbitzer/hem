@@ -99,12 +99,12 @@ the data that was available at that moment — same code paths as live) against
 baseline policies:
 
 ```sh
-cd hem && uv run python -m hem.backtest.cli --history ./data/history
+cd hem && uv run python -m hem.backtest.cli --history ./data/history --options ./dev-options.json
 ```
 
-reporting $/day for no-battery, naive self-consumption, and HEM, plus spike
-capture rate. The house rule: **HEM must beat self-consumption on your own
-recorded data before you create the actuator automation.**
+reporting $/day for no-battery, naive self-consumption, and HEM, plus revenue
+earned during spikes. The house rule: **HEM must beat self-consumption on
+your own recorded data before you create the actuator automation.**
 
 ## Under the hood
 
@@ -125,7 +125,9 @@ publisher, backtest, web), with the actuator blueprint in
 ## Install (HA OS / Supervised)
 
 Settings → Add-ons → Add-on store → ⋮ → Repositories → add this repo's URL,
-then install **Home Energy Manager**. Prebuilt images are pulled from GHCR.
+then install **Home Energy Manager**. Prebuilt images are pulled from GHCR
+(maintainer note: after the first CI publish, the `hem-amd64`/`hem-aarch64`
+packages must be set to public on GitHub or installs can't pull them).
 Full walkthrough including the input integrations: [docs/SETUP.md](docs/SETUP.md).
 
 ## Development (no Home Assistant OS required)
@@ -141,7 +143,8 @@ HEM_OPTIONS_FILE=./dev-options.json \
 uv run python -m hem
 ```
 
-or via Docker: `docker compose -f docker-compose.dev.yml up --build`
-(reads the same env vars from `.env`).
+or via Docker, from the **repo root**: `docker compose -f docker-compose.dev.yml up --build`
+(reads `HEM_HA_URL`/`HEM_HA_TOKEN` from your shell environment or a repo-root
+`.env`; note the standalone run above uses `hem/.env` instead).
 
 Tests: `cd hem && uv run pytest`

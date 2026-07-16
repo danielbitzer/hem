@@ -155,13 +155,15 @@ policies on your own data:
 
 ```sh
 # dev checkout on your machine (copy the add-on's /data/history locally, e.g.
-# via the Samba/SSH add-on; standalone dev runs record to hem/data/history)
+# via the Samba/SSH add-on; standalone dev runs record to hem/data/history).
+# --options points at your HEM options as JSON — copy dev-options.json.example
+# and fill in your entities/battery if you don't have one yet.
 cd hem
-uv run python -m hem.backtest.cli --history ./data/history
+uv run python -m hem.backtest.cli --history ./data/history --options ./dev-options.json
 ```
 
 It reports $/day for no-battery, naive self-consumption, and HEM, plus the
-spike capture rate. **Do not wire up actuation until HEM beats
+revenue earned during spikes. **Do not wire up actuation until HEM beats
 self-consumption on your recorded data** — tune wear cost and spike reserve
 (and make sure load learning is active) first if it doesn't.
 

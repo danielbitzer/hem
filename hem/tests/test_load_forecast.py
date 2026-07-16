@@ -11,6 +11,7 @@ from hem.forecast.load import (
     build_load_forecaster,
     fit_load_model,
     learn_hourly_profile,
+    normalize_load_units,
 )
 from hem.timegrid import TimeGrid
 
@@ -244,6 +245,40 @@ def test_predict_never_exceeds_observed_max():
     assert model.max_kw == pytest.approx(observed_max)
     # a 60°C forecast would extrapolate to ~4 kW; the cap holds it at max seen
     assert model.predict(0, 10, 60.0) == pytest.approx(observed_max)
+
+
+def test_mixed_magnitude_window_corrected_per_day():
+    # sensor emitted W-as-"kW" for a week, then was fixed to true kW: each
+    # day is corrected independently, so neither regime poisons the other
+    def week(first_day: int, kw: float) -> list[tuple[datetime, float]]:
+        return [
+            (datetime(2026, 7, d, h, tzinfo=UTC), kw)
+            for d in range(first_day, first_day + 7)
+            for h in range(24)
+        ]
+
+    rows = week(6, 400.0) + week(13, 0.4)  # mislabeled watts, then true kW
+    fixed = normalize_load_units(rows, "sensor.load_power", "statistics")
+    values = np.array([v for _, v in fixed])
+    assert np.allclose(values, 0.4)
+    # and the reverse lie (kW values under a W label, scaled /1000) recovers
+    restored = normalize_load_units(week(13, 0.0004), "sensor.load_power", "statistics")
+    assert np.allclose([v for _, v in restored], 0.4)
+
+
+def test_utc_aligned_stats_rows_split_across_local_hours():
+    # Real LTS rows start on UTC hour boundaries = local hh:30 in Adelaide.
+    # A row covering local 09:30-10:30 must weight hours 9 AND 10, not be
+    # dumped wholly into one bucket (which lagged the whole profile ~30 min).
+    rows = []
+    for day in (13, 14, 15):
+        start_utc = local(day, 9, 30)  # local 09:30 == UTC hour boundary 00:00
+        assert start_utc.minute == 0  # sanity: really UTC-hour aligned
+        rows.append((start_utc, 2.0, None))
+    model = fit_load_model(rows, ADELAIDE, min_bucket_hours=1.0)
+    assert model.base[0][9] == pytest.approx(2.0)  # 1.5h observed
+    assert model.base[0][10] == pytest.approx(2.0)  # 1.5h observed
+    assert model.base[0][11] is None  # nothing leaked further
 
 
 def stat_rows(values: list[tuple[datetime, float]]) -> list[dict]:

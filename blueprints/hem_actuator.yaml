@@ -101,10 +101,16 @@ variables:
        and (now() - (hb | as_datetime)) < timedelta(minutes=max_heartbeat_age_minutes | int) }}
   action: >-
     {{ states(action_sensor) if hem_alive else 'idle' }}
+  # power is read from the ACTION sensor's attributes (published atomically
+  # with the action, so they can never disagree); the setpoint sensor is the
+  # fallback for older HEM versions
   power_kw: >-
-    {{ states(setpoint_sensor) | float(0) if hem_alive else 0 }}
+    {% set p = state_attr(action_sensor, 'power_kw') %}
+    {{ (p if p is not none else states(setpoint_sensor)) | float(0) if hem_alive else 0 }}
   power_w: >-
-    {{ state_attr(setpoint_sensor, 'power_w') | int(0) if hem_alive else 0 }}
+    {% set p = state_attr(action_sensor, 'power_w') %}
+    {{ (p if p is not none else state_attr(setpoint_sensor, 'power_w')) | int(0)
+       if hem_alive else 0 }}
 
 conditions:
   # The periodic sweep only needs to act when HEM is NOT healthy (failsafe);

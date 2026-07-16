@@ -114,8 +114,8 @@ reaches the grid if `grid.export_limit_kw` allows it.
 
 | Entity | Meaning |
 |---|---|
-| `sensor.hem_status` | `ok` / `degraded`; heartbeat with solve stats |
-| `sensor.hem_action` | recommended action now: charge / discharge / idle / curtail |
+| `sensor.hem_status` | `ok` / `degraded`; heartbeat with solve stats and `load_forecast` |
+| `sensor.hem_action` | recommended action now: charge / discharge / idle / curtail (carries `power_kw`/`power_w` attributes, atomic with the action) |
 | `sensor.hem_power_setpoint` | recommended battery power, kW (+charge / −discharge) |
 | `sensor.hem_soc_target` | planned SoC at end of the current interval |
 | `sensor.hem_horizon_cost` | expected net cost ($) over the horizon |

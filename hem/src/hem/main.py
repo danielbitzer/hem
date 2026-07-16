@@ -28,6 +28,7 @@ from hem.forecast.load import build_load_forecaster, default_timezone
 from hem.ha.client import HaClient
 from hem.ha.publisher import Publisher
 from hem.models import Plan
+from hem.optimizer.model import SolverError
 from hem.planner import InputsStale, Planner
 from hem.recorder import Recorder, cycle_inputs_to_json
 from hem.web.app import AppState, create_app
@@ -64,8 +65,11 @@ class PriceWatcher:
         self.trigger = asyncio.Event()
         self._last_seen: dict[str, str] = {}
 
-    def on_change(self, entity_id: str, new_state: str) -> None:
-        last = self._last_seen.get(entity_id)
+    def on_change(self, entity_id: str, new_state: str, old_state: str | None = None) -> None:
+        # seed from the event's own old_state so the FIRST change after a
+        # (re)connect can still trigger — a spike confirming minutes after an
+        # add-on restart must not wait for the 5-min boundary
+        last = self._last_seen.get(entity_id) or old_state
         self._last_seen[entity_id] = new_state
         if last is None or last == new_state:
             return
@@ -99,14 +103,28 @@ async def cycle(
     data = await planner.gather(now)
     # The solve is synchronous CVXPY/HiGHS — run off the event loop so /health,
     # the WS watcher, and the dashboard stay responsive during long solves.
-    plan = await asyncio.to_thread(planner.optimize, data, now)
+    try:
+        plan = await asyncio.to_thread(planner.optimize, data, now)
+    except SolverError as e:
+        # a re-raise here means no previous plan to reuse either — that IS a
+        # failed cycle (degraded status via the caller's handler)
+        log.error("solver failed: %s; falling back to the previous plan", e)
+        plan = planner.fallback(now)
     planner.previous_plan = plan
     step0 = plan.intervals[0]
+    forecast_end = data.price_forecast_end.isoformat() if data.price_forecast_end else None
+    # plan and meta go to the dashboard together — meta lagging the plan gave
+    # first-poll renders no capacity axis and no load-forecast warning
     app_state.plan = plan
+    app_state.meta = {
+        "capacity_kwh": settings.battery.capacity_kwh,
+        "price_forecast_end": forecast_end,
+        "coverage": data.coverage,
+        "load_forecast": data.load_forecast_status,
+    }
 
     # Publishing IS the output: the user's actuator automation (see
     # blueprints/hem_actuator.yaml) turns these sensors into inverter control.
-    forecast_end = data.price_forecast_end.isoformat() if data.price_forecast_end else None
     await publisher.publish_plan(plan, settings.battery.capacity_kwh)
     await publisher.publish_status(
         "ok",
@@ -132,12 +150,6 @@ async def cycle(
         },
         now,
     )
-    app_state.meta = {
-        "capacity_kwh": settings.battery.capacity_kwh,
-        "price_forecast_end": forecast_end,
-        "coverage": data.coverage,
-        "load_forecast": data.load_forecast_status,
-    }
     log.info(
         "cycle ok: action=%s power=%+.2fkW soc=%.0f%% cost=$%.2f solve=%.0fms",
         step0.action.value,

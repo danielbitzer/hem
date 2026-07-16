@@ -44,19 +44,15 @@ class Publisher:
         await self._client.set_state("sensor.hem_status", status, attrs)
 
     async def publish_plan(self, plan: Plan, capacity_kwh: float) -> None:
-        """Publish the full dry-run sensor set (republished every cycle)."""
+        """Publish the full dry-run sensor set (republished every cycle).
+
+        Setpoint goes out BEFORE action: actuator automations trigger on the
+        action change and read the setpoint, so this order means a failure
+        between the two leaves the old action with a new setpoint (harmless —
+        no trigger fired) rather than a new action driving the previous
+        cycle's power.
+        """
         step0 = plan.intervals[0]
-        await self._client.set_state(
-            "sensor.hem_action",
-            step0.action.value,
-            {
-                "friendly_name": "HEM recommended action",
-                "icon": "mdi:battery-charging",
-                "solver_status": plan.solver_status,
-                "valid_until": step0.end.isoformat(),
-                "live_spike": plan.live_spike,
-            },
-        )
         await self._client.set_state(
             "sensor.hem_power_setpoint",
             round(step0.power_kw, 3),
@@ -67,6 +63,22 @@ class Publisher:
                 "icon": "mdi:battery-arrow-up-down",
                 "convention": "positive = charging",
                 # magnitude in W, for inverter number entities
+                "power_w": round(abs(step0.power_kw) * 1000),
+            },
+        )
+        await self._client.set_state(
+            "sensor.hem_action",
+            step0.action.value,
+            {
+                "friendly_name": "HEM recommended action",
+                "icon": "mdi:battery-charging",
+                "solver_status": plan.solver_status,
+                "valid_until": step0.end.isoformat(),
+                "live_spike": plan.live_spike,
+                # power duplicated here so action + magnitude change in ONE
+                # atomic POST — actuator automations read these, never pairing
+                # a fresh action with the previous cycle's setpoint
+                "power_kw": round(step0.power_kw, 3),
                 "power_w": round(abs(step0.power_kw) * 1000),
             },
         )

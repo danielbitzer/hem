@@ -375,6 +375,6 @@ def test_fallback_shifts_previous_plan():
     settings = make_settings()
     planner = offline_planner(settings)
     planner.previous_plan = previous_plan_with(Action.IDLE)
-    fallback = planner._fallback(NOW)
+    fallback = planner.fallback(NOW)
     assert fallback.solver_status.startswith("stale")
     assert all(iv.end > NOW for iv in fallback.intervals)

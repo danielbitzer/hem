@@ -24,6 +24,7 @@ mitigation is raising battery.soc_min until learning is active.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from dataclasses import dataclass
@@ -52,12 +53,19 @@ MIN_TEMP_HOURS = 72
 MIN_STATS_HOURS = 24
 REFRESH_INTERVAL = timedelta(hours=24)
 RETRY_INTERVAL = timedelta(minutes=30)
-# Unit plausibility: no house has a median hourly load above this, so a
-# median beyond it means the sensor's declared unit lies (e.g. the mkaiser
-# package's load_power declares kW while emitting watt-magnitude values —
-# seen live on Dan's install, where it produced a 35 kW/°C heating slope and
-# an infeasible MILP).
+# Unit plausibility: no house has a median hourly load above ~50 kW or below
+# ~10 W, so a daily median outside these bounds means the declared unit lies
+# (e.g. the mkaiser package's load_power declares kW while emitting
+# watt-magnitude values — seen live on Dan's install, where it produced a
+# 35 kW/°C heating slope and an infeasible MILP). Checked per UTC day, not
+# per window, so a window that MIXES magnitudes (sensor fixed mid-window)
+# gets each side corrected instead of one side poisoned.
 MAX_PLAUSIBLE_MEDIAN_KW = 50.0
+MIN_PLAUSIBLE_MEDIAN_KW = 0.01
+# One learn must never eat the 90s cycle budget (WS handshakes against a
+# blocked recorder can take ~45s each); on timeout the model waits for the
+# retry interval like any other failure.
+LEARN_TIMEOUT_S = 45
 # Physics plausibility for the fitted temperature response: whole-house
 # heating/cooling beyond this per degree means the fit chased an artifact —
 # drop the response rather than forecast nonsense.
@@ -111,6 +119,29 @@ def _step_bucket(step_start: datetime, step_end: datetime, tz: ZoneInfo) -> tupl
     """(is_weekend, local hour) for a grid step, keyed by its midpoint."""
     mid = (step_start + (step_end - step_start) / 2).astimezone(tz)
     return (1 if mid.weekday() >= 5 else 0, mid.hour)
+
+
+def _local_hour_pieces(
+    start: datetime, end: datetime, tz: ZoneInfo
+) -> list[tuple[int, int, float]]:
+    """Split [start, end) at local hour boundaries: (is_weekend, hour, hours).
+
+    Statistics rows start on UTC hour boundaries, which in a half-hour-offset
+    zone like Adelaide (+09:30) is local hh:30 — bucketing such a row whole
+    (by midpoint) shifts the entire learned daily profile ~30 min late.
+    Splitting weights each covered local hour by actual overlap instead.
+    """
+    pieces = []
+    cur = start
+    while cur < end:
+        local = cur.astimezone(tz)
+        boundary = (local.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
+        nxt = min(boundary.astimezone(cur.tzinfo), end)
+        pieces.append(
+            (1 if local.weekday() >= 5 else 0, local.hour, (nxt - cur).total_seconds() / 3600)
+        )
+        cur = nxt
+    return pieces
 
 
 @dataclass
@@ -252,19 +283,22 @@ def fit_load_model(
         )
 
     max_kw = max((max(r[1], 0.0) for r in rows), default=0.0)
-    count = np.zeros((2, 24))
+    count = np.zeros((2, 24))  # observed hours per bucket (rows are split)
     load_sum = np.zeros((2, 24))
     cdh_sum = np.zeros((2, 24))
     hdh_sum = np.zeros((2, 24))
+    pieces_per_row: list[list[tuple[int, int, float]]] = []
     for start, load_kw, temp_c in rows:
-        weekend, hour = _step_bucket(start, start + timedelta(hours=1), tz)
-        count[weekend][hour] += 1
-        load_sum[weekend][hour] += max(load_kw, 0.0)
-        if temp_c is not None:
-            cdh_sum[weekend][hour] += max(temp_c - balance_cool_c, 0.0)
-            hdh_sum[weekend][hour] += max(balance_heat_c - temp_c, 0.0)
+        pieces = _local_hour_pieces(start, start + timedelta(hours=1), tz)
+        pieces_per_row.append(pieces)
+        for weekend, hour, w in pieces:
+            count[weekend][hour] += w
+            load_sum[weekend][hour] += max(load_kw, 0.0) * w
+            if temp_c is not None:
+                cdh_sum[weekend][hour] += max(temp_c - balance_cool_c, 0.0) * w
+                hdh_sum[weekend][hour] += max(balance_heat_c - temp_c, 0.0) * w
 
-    safe = np.maximum(count, 1)
+    safe = np.where(count > 0, count, 1.0)
     base_arr = load_sum / safe
     model = LoadModel(
         base=[
@@ -284,14 +318,14 @@ def fit_load_model(
         return model
 
     dc, dh, dy, hours = [], [], [], []
-    for start, load_kw, temp_c in rows:
-        weekend, hour = _step_bucket(start, start + timedelta(hours=1), tz)
-        if count[weekend][hour] < min_bucket_hours:
-            continue
-        dc.append(max(temp_c - balance_cool_c, 0.0) - model.cdh_mean[weekend][hour])
-        dh.append(max(balance_heat_c - temp_c, 0.0) - model.hdh_mean[weekend][hour])
-        dy.append(max(load_kw, 0.0) - base_arr[weekend][hour])
-        hours.append(hour)
+    for (_, load_kw, temp_c), pieces in zip(rows, pieces_per_row, strict=True):
+        for weekend, hour, _w in pieces:
+            if count[weekend][hour] < min_bucket_hours:
+                continue
+            dc.append(max(temp_c - balance_cool_c, 0.0) - model.cdh_mean[weekend][hour])
+            dh.append(max(balance_heat_c - temp_c, 0.0) - model.hdh_mean[weekend][hour])
+            dy.append(max(load_kw, 0.0) - base_arr[weekend][hour])
+            hours.append(hour)
     if not dy:
         return model
     dc_a, dh_a, dy_a = np.array(dc), np.array(dh), np.array(dy)
@@ -330,26 +364,43 @@ def fit_load_model(
     return model
 
 
-def _unit_correction(loads_kw: list[float], entity_id: str, source: str) -> float:
-    """Extra scale factor when the declared unit is implausible.
+def normalize_load_units(
+    rows: list[tuple[datetime, float]], entity_id: str, source: str
+) -> list[tuple[datetime, float]]:
+    """Correct rows whose magnitude contradicts the declared unit, per UTC day.
 
-    Trust the data over the label: a median hourly load beyond any real house
-    means watt-magnitude values declared as kW (statistics metadata keeps the
-    unit from when the sensor first recorded, so it can lie after a unit
-    change). Without this, a mislabeled sensor inflates the load forecast
-    1000x and makes the MILP infeasible.
+    Trust the data over the label: statistics metadata keeps the unit from
+    when the sensor first recorded, so it can lie after a unit change.
+    Watt-magnitude values declared as kW inflate the forecast 1000x (and made
+    the MILP infeasible live); kW-magnitude values declared as W silently
+    forecast ~zero load. Per-day medians handle a window that mixes both
+    regimes (sensor fixed mid-window): each day is corrected independently.
     """
-    median = float(np.median(loads_kw)) if loads_kw else 0.0
-    if median > MAX_PLAUSIBLE_MEDIAN_KW:
+    by_day: dict[object, list[float]] = {}
+    for ts, v in rows:
+        by_day.setdefault(ts.date(), []).append(v)
+    scale_by_day: dict[object, float] = {}
+    corrected = {"down": 0, "up": 0}
+    for day, values in by_day.items():
+        median = float(np.median(values))
+        if median > MAX_PLAUSIBLE_MEDIAN_KW:
+            scale_by_day[day] = 0.001
+            corrected["down"] += 1
+        elif 0 < median < MIN_PLAUSIBLE_MEDIAN_KW:
+            scale_by_day[day] = 1000.0
+            corrected["up"] += 1
+        else:
+            scale_by_day[day] = 1.0
+    if corrected["down"] or corrected["up"]:
         log.warning(
-            "%s %s claims kW but the median value is %.0f — no house draws "
-            "that; treating the values as watts",
+            "%s %s magnitudes contradict the declared unit: rescaled %d day(s) "
+            "W-as-kW and %d day(s) kW-as-W — fix the sensor's unit at the source",
             entity_id,
             source,
-            median,
+            corrected["down"],
+            corrected["up"],
         )
-        return 0.001
-    return 1.0
+    return [(ts, v * scale_by_day[ts.date()]) for ts, v in rows]
 
 
 def _to_celsius(value: float, unit: str | None) -> float | None:
@@ -394,8 +445,12 @@ class HistoryLoadForecaster:
     async def refresh(self, now: datetime) -> None:
         if self._next_refresh and now < self._next_refresh:
             return
+        # Arm the retry BEFORE learning: if the cycle timeout cancels a slow
+        # learn, the next cycle must not repeat it at full cost immediately.
+        self._next_refresh = now + RETRY_INTERVAL
         try:
-            self._model = await self._learn(now)
+            async with asyncio.timeout(LEARN_TIMEOUT_S):
+                self._model = await self._learn(now)
             self._next_refresh = now + REFRESH_INTERVAL
             if self._model.has_temp_response:
                 heat_peak = max(self._model.heat_by_hour or [self._model.heat_kw_per_deg])
@@ -481,9 +536,10 @@ class HistoryLoadForecaster:
                     "without a temperature response",
                     self._temp_entity_id,
                 )
-        loads = [v * scale for _, v in load_rows]
-        scale *= _unit_correction(loads, self._entity_id, "statistics")
-        records = [(ts, v * scale, temps.get(ts)) for ts, v in load_rows]
+        scaled = normalize_load_units(
+            [(ts, v * scale) for ts, v in load_rows], self._entity_id, "statistics"
+        )
+        records = [(ts, v, temps.get(ts)) for ts, v in scaled]
         return fit_load_model(records, self._tz)
 
     async def _learn_raw_history(self, now: datetime) -> LoadModel:
@@ -503,9 +559,7 @@ class HistoryLoadForecaster:
                 continue  # unavailable/unknown gaps
         if len(samples) < 2:
             raise ValueError(f"not enough history samples ({len(samples)})")
-        correction = _unit_correction([v for _, v in samples], self._entity_id, "history")
-        if correction != 1.0:
-            samples = [(ts, v * correction) for ts, v in samples]
+        samples = normalize_load_units(samples, self._entity_id, "history")
         base = learn_hourly_profile(samples, self._tz)
         return LoadModel(
             base=base,

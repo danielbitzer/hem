@@ -2,7 +2,8 @@ from datetime import UTC, datetime, timedelta
 
 from freezegun import freeze_time
 
-from hem.main import seconds_to_next_boundary
+from hem.config import Settings
+from hem.main import PriceWatcher, seconds_to_next_boundary
 from hem.web.app import HealthState
 
 
@@ -20,6 +21,44 @@ def test_boundary_exactly_on_tick_waits_full_period():
 def test_boundary_never_returns_less_than_1s():
     epoch = datetime(2026, 7, 15, 9, 4, 59, 500000, tzinfo=UTC).timestamp()
     assert seconds_to_next_boundary(epoch) >= 1.0
+
+
+def make_watcher() -> PriceWatcher:
+    settings = Settings.model_validate(
+        {
+            "entities": {
+                "buy_price": "sensor.buy",
+                "sell_price": "sensor.sell",
+                "price_spike": "binary_sensor.spike",
+                "pv_forecast_today": "sensor.pv1",
+                "pv_forecast_tomorrow": "sensor.pv2",
+                "battery_soc": "sensor.soc",
+                "battery_power": "sensor.power",
+                "weather": "weather.home",
+            },
+            "battery": {"capacity_kwh": 10, "max_charge_kw": 5, "max_discharge_kw": 5},
+            "grid": {"import_limit_kw": 15, "export_limit_kw": 5},
+        }
+    )
+    return PriceWatcher(settings)
+
+
+def test_watcher_first_change_after_restart_triggers():
+    # the very first observed event carries old_state — a spike confirming
+    # minutes after an add-on restart must trigger immediately
+    w = make_watcher()
+    w.on_change("binary_sensor.spike", "on", "off")
+    assert w.trigger.is_set()
+
+
+def test_watcher_small_move_and_unseeded_first_event_do_not_trigger():
+    w = make_watcher()
+    w.on_change("sensor.buy", "0.44", None)  # no old_state: nothing to compare
+    assert not w.trigger.is_set()
+    w.on_change("sensor.buy", "0.46", "0.44")  # 2c move: below threshold
+    assert not w.trigger.is_set()
+    w.on_change("sensor.buy", "0.95", "0.46")  # spike-sized move
+    assert w.trigger.is_set()
 
 
 def test_health_grace_period_then_degraded():
