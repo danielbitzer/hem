@@ -159,12 +159,13 @@ traceable, editable, and disabling it is the master off-switch.
 
 Import `blueprints/hem_actuator.yaml` from this repo (Settings → Automations →
 Blueprints → Import), then create an automation from it. You supply three
-action sequences for your hardware; inside them the variables `power_kw`
-(signed, +charge/−discharge), `power_w` (magnitude in watts), and `action`
-are available. The blueprint has the failsafe built in: if HEM's heartbeat is
-stale, degraded, or the sensors are missing (HA restarted while HEM was
-down), your *idle* actions run — so a dead add-on can never leave the
-inverter stuck in forced mode. Keep the idle sequence simple and idempotent.
+action sequences for your hardware — plus two optional ones for curtailment —
+and inside them the variables `power_kw` (signed, +charge/−discharge),
+`power_w` (magnitude in watts), and `action` are available. The blueprint has
+the failsafe built in: if HEM's heartbeat is stale, degraded, or the sensors
+are missing (HA restarted while HEM was down), your *idle* actions run (after
+lifting any export cap) — so a dead add-on can never leave the inverter stuck
+in forced mode or curtailed. Keep the idle sequence simple and idempotent.
 
 Example sequences for the mkaiser Sungrow package (verify entity IDs and
 option strings against your install — they vary between package versions):
@@ -190,11 +191,26 @@ option strings against your install — they vary between package versions):
 - action: select.select_option
   target: {entity_id: select.sungrow_ems_mode}
   data: {option: "Self-consumption mode (default)"}
+
+# curtail_actions (optional) — cap export while feed-in is negative; the
+# blueprint runs idle_actions first, so the battery is already back to normal
+- action: number.set_value
+  target: {entity_id: number.sungrow_export_power_limit}
+  data: {value: 0}
+
+# uncurtail_actions (required if you set curtail_actions) — restore your
+# normal export limit; runs before every non-curtail branch, so it must be
+# idempotent. Use your DNSP limit in watts.
+- action: number.set_value
+  target: {entity_id: number.sungrow_export_power_limit}
+  data: {value: 12000}
 ```
 
 Set the power register **before** engaging forced mode (as above), so a
 partial failure leaves the inverter in its previous mode rather than forced
-with a stale setpoint.
+with a stale setpoint. Note some mkaiser versions gate the export limit
+behind `switch.sungrow_export_power_limit_mode` — if yours does, enable it in
+curtail and disable it in uncurtail instead of writing your DNSP limit back.
 
 **Do not create the automation until a backtest on your own recorded data
 shows HEM beating self-consumption** (see Backtesting above), and bench-test

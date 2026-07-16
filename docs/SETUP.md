@@ -171,7 +171,8 @@ self-consumption on your recorded data** — tune wear cost and spike reserve
 
 Import [`blueprints/hem_actuator.yaml`](../blueprints/hem_actuator.yaml)
 (Settings → Automations → Blueprints → Import), create an automation from it,
-and fill in the three action sequences — charge / discharge / idle — for your
+and fill in the three action sequences — charge / discharge / idle (plus
+optional curtail/un-curtail export-limit sequences for negative feed-in) — for your
 hardware; a complete Sungrow (mkaiser) example lives in the add-on
 Documentation tab ([hem/DOCS.md](../hem/DOCS.md)). The blueprint has a
 heartbeat failsafe built in: if HEM stops publishing or reports degraded, your
