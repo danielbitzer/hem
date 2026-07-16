@@ -215,8 +215,59 @@ def test_classify_action_grid_coupled_semantics():
         ((5.0, 0.0, 2.0, 2.0, 1.0), Action.CHARGE),
         # spilling PV on purpose (negative feed-in)
         ((0.0, 0.0, 5.0, 1.0, 1.0), Action.CURTAIL),
-        # nothing happening
-        ((0.0, 0.0, 0.0, 0.0, 0.5), Action.IDLE),
+        # load imported while the battery deliberately rests: hold
+        ((0.0, 0.0, 0.0, 0.0, 0.5), Action.HOLD),
+        # nothing flowing at all
+        ((0.0, 0.0, 0.0, 0.0, 0.0), Action.IDLE),
     ]
     for args, expected in cases:
         assert classify_action(*args) == expected, args
+
+
+def test_classify_hold_defers_battery_action():
+    from hem.models import Action
+    from hem.optimizer.result import classify_action
+
+    # battery flat while PV surplus exports: defer charging -> HOLD
+    assert classify_action(0.0, 0.0, 5.0, 5.0, 2.0) == Action.HOLD
+    # battery flat while load imports: save the charge -> HOLD
+    assert classify_action(0.0, 0.0, 0.0, 0.0, 0.9) == Action.HOLD
+    # nothing flowing at all: plain idle
+    assert classify_action(0.0, 0.0, 0.0, 0.0, 0.0) == Action.IDLE
+
+
+def test_scenario_defer_charge_to_cheaper_window():
+    """Dan's live morning (2026-07-17): good feed-in now, worthless feed-in
+    at midday -> export the morning PV, charge the battery later. Step 0
+    must classify HOLD (self-consumption mode would charge immediately)."""
+    from hem.models import Action
+    from hem.optimizer.result import classify_action
+
+    T = 12
+    # 0.28 sell: beats storing PV (terminal ~0.24) but not exporting stored
+    # energy (wear + terminal/eff ~0.30) — so the battery must simply wait.
+    # Late PV is modest so the battery does NOT saturate (a saturating
+    # battery makes early discharge optimal: stored energy loses its
+    # terminal value once the horizon ends full).
+    sell = np.concatenate([np.full(6, 0.28), np.full(6, 0.0)])
+    pv = np.concatenate([np.full(6, 5.0), np.full(6, 2.0)])
+    inputs = make_inputs(T=T, buy=0.35, sell=sell, pv=pv, load=0.5, soc0=2.0)
+    sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.25))
+    step0 = classify_action(
+        float(sol.charge_kw[0]),
+        float(sol.discharge_kw[0]),
+        float(inputs.pv[0]),
+        float(sol.pv_used_kw[0]),
+        float(inputs.load[0]),
+    )
+    assert step0 == Action.HOLD  # exporting at 0.28, not storing
+    # the charge happens in the worthless-feed-in window instead
+    assert float(np.max(sol.charge_kw[6:])) > 1.0
+    assert float(np.max(sol.charge_kw[:6])) < 0.05
+
+
+def test_pin_hold_freezes_battery():
+    inputs = make_inputs(T=6, buy=0.10, sell=0.05, soc0=6.4)  # cheap: would charge
+    sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.25), pin_step0="hold")
+    assert float(sol.charge_kw[0]) == pytest.approx(0.0, abs=1e-6)
+    assert float(sol.discharge_kw[0]) == pytest.approx(0.0, abs=1e-6)

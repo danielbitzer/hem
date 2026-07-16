@@ -171,6 +171,8 @@ def solve(
         constraints += [pd[0] == 0, pc[0] >= 0.01]
     elif pin_step0 == "discharge":
         constraints += [pc[0] == 0, pd[0] >= 0.01]
+    elif pin_step0 == "hold":
+        constraints += [pc[0] == 0, pd[0] == 0]  # battery frozen
     elif pin_step0 in ("idle", "curtail"):
         # self-consumption envelope: charge from PV only, export PV leftovers
         # only (no battery export); serving load from the battery stays free

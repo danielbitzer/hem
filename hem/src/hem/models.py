@@ -68,9 +68,14 @@ class BatteryState:
 
 
 class Action(StrEnum):
-    CHARGE = "charge"
-    DISCHARGE = "discharge"
-    IDLE = "idle"
+    CHARGE = "charge"  # from the grid
+    DISCHARGE = "discharge"  # exporting stored energy
+    IDLE = "idle"  # self-consumption territory
+    # battery deliberately inactive while the grid covers the difference:
+    # PV surplus exported instead of stored (defer charging), or load
+    # imported instead of discharging (defer discharge). Self-consumption
+    # mode would act here; the plan says don't.
+    HOLD = "hold"
     CURTAIL = "curtail"
 
 

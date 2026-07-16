@@ -123,6 +123,13 @@ inverter's self-consumption mode would never make on its own. Running the
 house off the battery and soaking up PV surplus both publish `idle`, because
 self-consumption mode already does those jobs with second-by-second load
 tracking that a 5-minute forced setpoint can't match.
+
+`hold` is the opposite of idle: the battery must stay **inactive** where
+self-consumption mode would act — morning PV exported instead of stored
+(deferring the charge to a lower-value window), or load imported instead of
+discharged (saving the charge for a better price). Actuate it by freezing
+the battery (Sungrow: forced mode + Stop command); without a hold sequence
+configured, the blueprint falls back to idle and the deferral is lost.
 | `sensor.hem_power_setpoint` | recommended battery power, kW (+charge / −discharge) |
 | `sensor.hem_soc_target` | planned SoC at end of the current interval |
 | `sensor.hem_horizon_cost` | expected net cost ($) over the horizon |
@@ -206,6 +213,15 @@ option strings against your install — they vary between package versions):
 - action: select.select_option
   target: {entity_id: select.sungrow_ems_mode}
   data: {option: "Self-consumption mode (default)"}
+
+# hold_actions (optional) — freeze the battery (defer charging / save charge)
+# while PV exports or the grid serves the load
+- action: select.select_option
+  target: {entity_id: select.sungrow_battery_forced_charge_discharge_cmd}
+  data: {option: "Stop (default)"}
+- action: select.select_option
+  target: {entity_id: select.sungrow_ems_mode}
+  data: {option: "Forced mode"}
 
 # curtail_actions (optional) — cap export while feed-in is negative; the
 # blueprint runs idle_actions first, so the battery is already back to normal

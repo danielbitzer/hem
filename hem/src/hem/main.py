@@ -37,7 +37,7 @@ log = logging.getLogger("hem")
 
 CYCLE_SECONDS = 300
 WEB_PORT = 8099
-EVENT_DEBOUNCE_S = 10
+EVENT_DEBOUNCE_S = 2  # buy+sell arrive together; just soak up that burst
 PRICE_TRIGGER_DELTA = 0.05  # $/kWh move that justifies an early re-solve
 WS_RECONNECT_BACKOFF_S = 30
 

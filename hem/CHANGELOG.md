@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.2
+
+- **New `hold` action**: the battery stays deliberately inactive while PV
+  surplus exports (deferring the charge to a lower-value window) or load
+  imports (saving stored energy for a better price) — jobs self-consumption
+  mode cannot do. Blueprint gains an optional `hold_actions` input (Sungrow:
+  forced mode + Stop); left empty, hold behaves as idle.
+- Blueprint: optional grid-connection sensor(s) — any reading OFF reverts to
+  idle/self-consumption immediately and re-asserts every 5 minutes.
+- Price-event debounce reduced 10s -> 2s: HEM re-solves ~3s after a
+  significant Amber price lands.
+
 ## 0.1.1
 
 - **Grid-coupled action semantics**: `charge`/`discharge` are now reserved for
