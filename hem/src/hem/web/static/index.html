@@ -44,6 +44,7 @@
   <div class="tile"><div class="k">Battery setpoint</div><div class="v" id="t-power">–</div></div>
   <div class="tile"><div class="k">SoC target</div><div class="v" id="t-soc">–</div></div>
   <div class="tile"><div class="k">Horizon cost</div><div class="v" id="t-cost">–</div></div>
+  <div class="tile"><div class="k">Forecast load</div><div class="v" id="t-load">–</div></div>
 </div>
 <div class="card"><h2>Prices $/kWh (buy / sell)</h2><div id="chart-prices"></div></div>
 <div class="card"><h2>Forecast kW (PV / load)</h2><div id="chart-power"></div></div>
@@ -141,6 +142,11 @@ async function refresh() {
     ? (100 * step0.soc_end / cap).toFixed(0) + "% · " + step0.soc_end.toFixed(1) + " kWh"
     : step0.soc_end.toFixed(1) + " kWh";
   document.querySelector("#t-cost").textContent = "$" + plan.objective_cost.toFixed(2);
+  const loadKwh = iv.reduce(
+    (sum, x) => sum + x.load_kw * (new Date(x.end) - new Date(x.start)) / 3600000, 0);
+  const horizonH = (new Date(iv[iv.length - 1].end) - new Date(iv[0].start)) / 3600000;
+  document.querySelector("#t-load").textContent =
+    loadKwh.toFixed(1) + " kWh / " + Math.round(horizonH) + "h";
 
   const paddedTail = forecastEnd && forecastEnd < t[t.length - 1] ? {
     xaxis: [{
