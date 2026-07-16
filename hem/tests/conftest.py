@@ -53,10 +53,16 @@ class FakeHa:
         # recorder history: entity_id -> list of raw history item dicts
         self.history: dict[str, list[dict]] = {}
         self.history_requests: list[dict] = []
+        # long-term statistics: statistic_id -> list of raw stat row dicts;
+        # metadata: statistic_id -> unit (only ids present here "have" LTS)
+        self.statistics: dict[str, list[dict]] = {}
+        self.statistics_meta: dict[str, str | None] = {}
+        self.ws_commands: list[dict] = []
         self.app.router.add_get("/api/states/{entity_id}", self._get_state)
         self.app.router.add_post("/api/states/{entity_id}", self._post_state)
         self.app.router.add_post("/api/services/{domain}/{service}", self._call_service)
         self.app.router.add_get("/api/history/period/{start}", self._get_history)
+        self.app.router.add_get("/api/websocket", self._websocket)
 
     def add_fixture(self, name: str) -> str:
         payload = fixture_state_payload(name)
@@ -88,6 +94,38 @@ class FakeHa:
             return web.json_response([])
         return web.json_response([self.history[entity_id]])
 
+    async def _websocket(self, request: web.Request) -> web.WebSocketResponse:
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        await ws.send_json({"type": "auth_required"})
+        auth = await ws.receive_json()
+        if auth.get("access_token") != "tok":
+            await ws.send_json({"type": "auth_invalid"})
+            return ws
+        await ws.send_json({"type": "auth_ok"})
+        async for msg in ws:
+            if msg.type != web.WSMsgType.TEXT:
+                break
+            req = msg.json()
+            self.ws_commands.append(req)
+            reply = {"id": req.get("id"), "type": "result", "success": True}
+            if req.get("type") == "recorder/statistics_during_period":
+                reply["result"] = {
+                    sid: rows
+                    for sid, rows in self.statistics.items()
+                    if sid in req["statistic_ids"]
+                }
+            elif req.get("type") == "recorder/get_statistics_metadata":
+                reply["result"] = [
+                    {"statistic_id": sid, "statistics_unit_of_measurement": unit}
+                    for sid, unit in self.statistics_meta.items()
+                    if sid in req["statistic_ids"]
+                ]
+            else:
+                reply.update(success=False, error={"message": "unknown command"})
+            await ws.send_json(reply)
+        return ws
+
     async def _call_service(self, request: web.Request) -> web.Response:
         domain, service = request.match_info["domain"], request.match_info["service"]
         data = await request.json()
@@ -108,7 +146,8 @@ async def fake_ha_client(fake: FakeHa) -> AsyncIterator[HaClient]:
     await server.start_server()
     try:
         base = str(server.make_url("")).rstrip("/")
-        conn = HaConnection(rest_url=f"{base}/api", ws_url="ws://unused", token="tok")
+        ws_url = f"ws://{base.split('://', 1)[1]}/api/websocket"
+        conn = HaConnection(rest_url=f"{base}/api", ws_url=ws_url, token="tok")
         async with HaClient(conn) as client:
             yield client
     finally:

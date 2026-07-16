@@ -3,18 +3,21 @@
 Two forecasters behind one protocol:
 
 - BaselineLoadForecaster (load_profile.source: profile): a per-hour-of-day
-  baseline (weekday/weekend) from config.
-- HistoryLoadForecaster (load_profile.source: history): learns the hourly
-  baseline from the household's actual consumption — HA recorder history of a
-  configured load-power sensor over the last N days, time-weighted per local
-  hour-of-day × weekday/weekend. Hours with too little data fall back to the
-  configured profile, as does everything when history is unavailable, so the
-  configured profile remains the safety net, not dead config.
+  baseline (weekday/weekend) from config, plus additive temperature rules.
+- HistoryLoadForecaster (load_profile.source: history): learns from the
+  household's actual consumption, refreshed daily. Preferred data source is
+  hourly long-term statistics (which survive recorder purging, so the window
+  can be months), falling back to raw recorder history (~10 days) for sensors
+  without a state_class, falling back to the configured profile entirely.
 
-Both apply additive temperature rules (heating/cooling kW when the forecast
-temperature crosses a threshold) on top. NOTE for history mode: the learned
-averages already include typical seasonal heating/cooling, so keep temp_rules
-for extreme-day corrections only (or empty) to avoid double counting.
+With an outdoor temperature sensor configured (entities.outdoor_temp), the
+daily learn also fits a temperature response: pooled cooling/heating slopes
+(kW per degree above/below balance temperatures) regressed against each hour
+bucket's deviation from its own average. forecast() then applies the FORECAST
+temperatures to those slopes — so the prediction tracks a heatwave arriving
+after a mild fortnight instead of the trailing average lagging it. When a
+response is learned, config temp_rules are suppressed (the data already
+speaks); otherwise they apply additively as in profile mode.
 
 The grid is UTC but people live in local time, so the hour-of-day lookup uses
 the configured local timezone (half-hour offsets like Adelaide's +09:30 mean a
@@ -26,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -38,14 +42,19 @@ from hem.timegrid import TimeGrid
 
 log = logging.getLogger(__name__)
 
-# A history sample holds until the next one; cap how long a single sample can
-# count for so recorder gaps (HA restarts, purged data) don't let one stale
-# value dominate its bucket.
+# A raw-history sample holds until the next one; cap how long a single sample
+# can count for so recorder gaps (HA restarts, purged data) don't let one
+# stale value dominate its bucket.
 MAX_SEGMENT = timedelta(minutes=30)
 # Minimum observed hours in a (daytype, hour) bucket before trusting it over
-# the configured profile — 2h over a 14-day window means the bucket is real.
+# the configured profile.
 MIN_BUCKET_HOURS = 2.0
-REFRESH_INTERVAL = timedelta(hours=6)
+# Minimum hours carrying both load and temperature before fitting slopes —
+# 3 days of joint data; below that the regression is noise.
+MIN_TEMP_HOURS = 72
+# Minimum hourly statistics rows to prefer LTS over raw recorder history.
+MIN_STATS_HOURS = 24
+REFRESH_INTERVAL = timedelta(hours=24)
 RETRY_INTERVAL = timedelta(minutes=30)
 
 _UNIT_TO_KW = {"W": 0.001, "kW": 1.0, "w": 0.001, "kw": 1.0}
@@ -99,6 +108,37 @@ class BaselineLoadForecaster:
         return _apply_temp_rules(out, self._profile, grid, temps_c)
 
 
+@dataclass
+class LoadModel:
+    """Learned hourly baseline plus optional pooled temperature response.
+
+    Prediction: base[bucket] + cool_slope * (cdh(T) - bucket's mean cdh)
+                             + heat_slope * (hdh(T) - bucket's mean hdh)
+    i.e. unbiased at the bucket's historically-typical temperature, shifted by
+    how far the forecast deviates from it.
+    """
+
+    base: list[list[float | None]]  # (daytype, hour) mean kW; None = thin bucket
+    cdh_mean: np.ndarray  # (2, 24) mean cooling degrees per bucket
+    hdh_mean: np.ndarray
+    cool_kw_per_deg: float = 0.0
+    heat_kw_per_deg: float = 0.0
+    balance_cool_c: float = 22.0
+    balance_heat_c: float = 15.0
+    has_temp_response: bool = False
+
+    def predict(self, weekend: int, hour: int, temp_c: float | None) -> float | None:
+        value = self.base[weekend][hour]
+        if value is None:
+            return None
+        if self.has_temp_response and temp_c is not None:
+            cdh = max(temp_c - self.balance_cool_c, 0.0)
+            hdh = max(self.balance_heat_c - temp_c, 0.0)
+            value += self.cool_kw_per_deg * (cdh - self.cdh_mean[weekend][hour])
+            value += self.heat_kw_per_deg * (hdh - self.hdh_mean[weekend][hour])
+        return max(value, 0.0)
+
+
 def learn_hourly_profile(
     samples: list[tuple[datetime, float]],
     tz: ZoneInfo,
@@ -131,12 +171,116 @@ def learn_hourly_profile(
     ]
 
 
-class HistoryLoadForecaster:
-    """Learns the hourly baseline from HA recorder history of a load sensor.
+def _fit_slopes(dc: np.ndarray, dh: np.ndarray, dy: np.ndarray) -> tuple[float, float]:
+    """Non-negative least squares for two regressors, by hand (it's 2x2).
 
-    refresh() re-learns every REFRESH_INTERVAL and is deliberately never fatal:
-    on any failure the last learned tables (or the configured profile) keep
-    serving and a retry happens after RETRY_INTERVAL.
+    Degenerate columns (no temperature variation in that direction over the
+    window — e.g. no cooling degrees in winter) get a zero slope.
+    """
+
+    def single(x: np.ndarray) -> float:
+        d = float(x @ x)
+        return max(float(x @ dy) / d, 0.0) if d > 1e-9 else 0.0
+
+    has_c, has_h = float(dc @ dc) > 1e-9, float(dh @ dh) > 1e-9
+    if has_c and has_h:
+        a = np.array([[dc @ dc, dc @ dh], [dc @ dh, dh @ dh]])
+        b = np.array([dc @ dy, dh @ dy])
+        if abs(np.linalg.det(a)) > 1e-9:
+            c, h = (float(v) for v in np.linalg.solve(a, b))
+            if c < 0:
+                return 0.0, single(dh)
+            if h < 0:
+                return single(dc), 0.0
+            return c, h
+        return single(dc), 0.0  # collinear: attribute to cooling arbitrarily
+    return (single(dc), 0.0) if has_c else (0.0, single(dh))
+
+
+def fit_load_model(
+    records: list[tuple[datetime, float, float | None]],
+    tz: ZoneInfo,
+    *,
+    balance_cool_c: float = 22.0,
+    balance_heat_c: float = 15.0,
+    min_bucket_hours: float = MIN_BUCKET_HOURS,
+    min_temp_hours: int = MIN_TEMP_HOURS,
+) -> LoadModel:
+    """Fit a LoadModel from hourly (start, load_kw, temp_c | None) records.
+
+    With enough joint load+temperature hours, only those hours are used (so
+    the bucket means and the regression see the same data) and pooled
+    cooling/heating slopes are fitted on per-bucket deviations. Otherwise a
+    base-only model is returned. Pure and synchronous for testability.
+    """
+    with_temp = [r for r in records if r[2] is not None]
+    use_temp = len(with_temp) >= min_temp_hours
+    rows = with_temp if use_temp else records
+
+    count = np.zeros((2, 24))
+    load_sum = np.zeros((2, 24))
+    cdh_sum = np.zeros((2, 24))
+    hdh_sum = np.zeros((2, 24))
+    for start, load_kw, temp_c in rows:
+        weekend, hour = _step_bucket(start, start + timedelta(hours=1), tz)
+        count[weekend][hour] += 1
+        load_sum[weekend][hour] += max(load_kw, 0.0)
+        if temp_c is not None:
+            cdh_sum[weekend][hour] += max(temp_c - balance_cool_c, 0.0)
+            hdh_sum[weekend][hour] += max(balance_heat_c - temp_c, 0.0)
+
+    safe = np.maximum(count, 1)
+    base_arr = load_sum / safe
+    model = LoadModel(
+        base=[
+            [
+                float(base_arr[d][h]) if count[d][h] >= min_bucket_hours else None
+                for h in range(24)
+            ]
+            for d in (0, 1)
+        ],
+        cdh_mean=cdh_sum / safe,
+        hdh_mean=hdh_sum / safe,
+        balance_cool_c=balance_cool_c,
+        balance_heat_c=balance_heat_c,
+    )
+    if not use_temp:
+        return model
+
+    dc, dh, dy = [], [], []
+    for start, load_kw, temp_c in rows:
+        weekend, hour = _step_bucket(start, start + timedelta(hours=1), tz)
+        if count[weekend][hour] < min_bucket_hours:
+            continue
+        dc.append(max(temp_c - balance_cool_c, 0.0) - model.cdh_mean[weekend][hour])
+        dh.append(max(balance_heat_c - temp_c, 0.0) - model.hdh_mean[weekend][hour])
+        dy.append(max(load_kw, 0.0) - base_arr[weekend][hour])
+    if dy:
+        model.cool_kw_per_deg, model.heat_kw_per_deg = _fit_slopes(
+            np.array(dc), np.array(dh), np.array(dy)
+        )
+        # a fit on real data counts as a response even if the house turned out
+        # temperature-insensitive (slopes 0) — temp_rules stay suppressed
+        model.has_temp_response = True
+    return model
+
+
+def _to_celsius(value: float, unit: str | None) -> float | None:
+    if unit in ("°C", "C"):
+        return value
+    if unit in ("°F", "F"):
+        return (value - 32.0) * 5.0 / 9.0
+    return None
+
+
+class HistoryLoadForecaster:
+    """Learns household load from history, refreshed daily.
+
+    Data source preference per refresh: hourly long-term statistics over
+    profile.history_days (months-capable), then raw recorder history
+    (~recorder purge window), then the configured profile. Refresh is
+    deliberately never fatal: on any failure the last learned model (or the
+    configured profile) keeps serving and a retry happens after RETRY_INTERVAL.
     """
 
     def __init__(
@@ -146,39 +290,96 @@ class HistoryLoadForecaster:
         profile: LoadProfile,
         tz: ZoneInfo,
         *,
-        history_days: int = 14,
+        temp_entity_id: str = "",
+        history_days: int = 60,
     ):
         self._client = client
         self._entity_id = entity_id
+        self._temp_entity_id = temp_entity_id
         self._profile = profile
         self._tz = tz
         self._days = history_days
-        self._learned: list[list[float | None]] | None = None
+        self._model: LoadModel | None = None
         self._next_refresh: datetime | None = None
 
     async def refresh(self, now: datetime) -> None:
         if self._next_refresh and now < self._next_refresh:
             return
         try:
-            self._learned = await self._learn(now)
+            self._model = await self._learn(now)
             self._next_refresh = now + REFRESH_INTERVAL
-            known = sum(v is not None for table in self._learned for v in table)
-            log.info(
-                "load history learned from %s: %d/48 hour buckets covered "
-                "(rest use the configured profile)",
-                self._entity_id,
-                known,
-            )
+            known = sum(v is not None for table in self._model.base for v in table)
+            if self._model.has_temp_response:
+                log.info(
+                    "load model learned from %s: %d/48 hour buckets, temperature "
+                    "response %.3f kW/°C cooling / %.3f kW/°C heating",
+                    self._entity_id,
+                    known,
+                    self._model.cool_kw_per_deg,
+                    self._model.heat_kw_per_deg,
+                )
+            else:
+                log.info(
+                    "load model learned from %s: %d/48 hour buckets covered, no "
+                    "temperature response (rest use the configured profile)",
+                    self._entity_id,
+                    known,
+                )
         except Exception as e:  # noqa: BLE001 - learned load is best-effort by design
             self._next_refresh = now + RETRY_INTERVAL
             log.warning(
                 "could not learn load history from %s (%s); using %s",
                 self._entity_id,
                 e,
-                "previous learned profile" if self._learned else "configured profile",
+                "previous learned model" if self._model else "configured profile",
             )
 
-    async def _learn(self, now: datetime) -> list[list[float | None]]:
+    async def _learn(self, now: datetime) -> LoadModel:
+        try:
+            return await self._learn_statistics(now)
+        except Exception as e:  # noqa: BLE001 - LTS is an upgrade, not a requirement
+            log.info(
+                "long-term statistics unavailable for %s (%s); falling back to "
+                "recorder history",
+                self._entity_id,
+                e,
+            )
+        return await self._learn_raw_history(now)
+
+    async def _learn_statistics(self, now: datetime) -> LoadModel:
+        """Learn from hourly LTS; the only path that can fit a temp response."""
+        ids = [self._entity_id] + ([self._temp_entity_id] if self._temp_entity_id else [])
+        units = await self._client.get_statistics_metadata(ids)
+        if self._entity_id not in units:
+            raise ValueError("no long-term statistics (sensor needs a state_class)")
+        load_unit = units[self._entity_id]
+        if load_unit not in _UNIT_TO_KW:
+            raise ValueError(f"statistics unit {load_unit!r} is not W/kW")
+        scale = _UNIT_TO_KW[load_unit]
+
+        stats = await self._client.get_statistics(ids, now - timedelta(days=self._days), now)
+        load_rows = stats.get(self._entity_id, [])
+        if len(load_rows) < MIN_STATS_HOURS:
+            raise ValueError(f"only {len(load_rows)} hourly statistics rows")
+
+        temps: dict[datetime, float] = {}
+        if self._temp_entity_id:
+            if self._temp_entity_id in units:
+                temp_unit = units[self._temp_entity_id]
+                for ts, v in stats.get(self._temp_entity_id, []):
+                    c = _to_celsius(v, temp_unit)
+                    if c is not None:
+                        temps[ts] = c
+            if not temps:
+                log.warning(
+                    "outdoor_temp %s has no usable statistics; learning load "
+                    "without a temperature response",
+                    self._temp_entity_id,
+                )
+        records = [(ts, v * scale, temps.get(ts)) for ts, v in load_rows]
+        return fit_load_model(records, self._tz)
+
+    async def _learn_raw_history(self, now: datetime) -> LoadModel:
         state = await self._client.get_state(self._entity_id)
         unit = state.attributes.get("unit_of_measurement")
         if unit not in _UNIT_TO_KW:
@@ -195,26 +396,41 @@ class HistoryLoadForecaster:
                 continue  # unavailable/unknown gaps
         if len(samples) < 2:
             raise ValueError(f"not enough history samples ({len(samples)})")
-        return learn_hourly_profile(samples, self._tz)
+        base = learn_hourly_profile(samples, self._tz)
+        return LoadModel(base=base, cdh_mean=np.zeros((2, 24)), hdh_mean=np.zeros((2, 24)))
 
     def forecast(self, grid: TimeGrid, temps_c: np.ndarray | None) -> np.ndarray:
+        model = self._model
         out = np.empty(len(grid))
         for i, step in enumerate(grid.steps):
             weekend, hour = _step_bucket(step.start, step.end, self._tz)
-            learned = self._learned[weekend][hour] if self._learned else None
-            if learned is None:
+            temp = float(temps_c[i]) if temps_c is not None else None
+            value = model.predict(weekend, hour, temp) if model else None
+            if value is None:
                 hourly = self._profile.weekend_kw if weekend else self._profile.weekday_kw
-                learned = hourly[hour]
-            out[i] = learned
+                value = hourly[hour]
+            out[i] = value
+        if model is not None and model.has_temp_response:
+            return out  # learned response replaces config temp_rules
         return _apply_temp_rules(out, self._profile, grid, temps_c)
 
 
 def build_load_forecaster(
-    client: HaClient, settings_load_power: str, profile: LoadProfile, tz: ZoneInfo
+    client: HaClient,
+    settings_load_power: str,
+    profile: LoadProfile,
+    tz: ZoneInfo,
+    *,
+    outdoor_temp: str = "",
 ) -> LoadForecaster:
     if profile.source == "history":
         return HistoryLoadForecaster(
-            client, settings_load_power, profile, tz, history_days=profile.history_days
+            client,
+            settings_load_power,
+            profile,
+            tz,
+            temp_entity_id=outdoor_temp,
+            history_days=profile.history_days,
         )
     return BaselineLoadForecaster(profile, tz)
 

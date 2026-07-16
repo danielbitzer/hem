@@ -86,8 +86,11 @@ Two things to check:
   `charge_positive`.
 - **Optional but recommended — house load sensor** (e.g. mkaiser's
   `sensor.load_power`): lets HEM learn your real hourly load profile from
-  recorder history (`load_profile.source: history`) instead of hand-typed
-  hourly values.
+  history (`load_profile.source: history`) instead of hand-typed hourly
+  values. Add an **outdoor temperature sensor** (`entities.outdoor_temp`, any
+  sensor with long-term statistics) and HEM also learns your house's
+  temperature response — how much load heatwaves and cold snaps add — and
+  applies it to forecast temperatures.
 
 ## 6. Install the HEM add-on
 

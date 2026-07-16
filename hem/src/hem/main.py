@@ -188,7 +188,11 @@ async def run() -> None:
                 weather=WeatherAdapter(client, settings.entities),
                 tz=tz,
                 load_forecaster=build_load_forecaster(
-                    client, settings.entities.load_power, settings.load_profile, tz
+                    client,
+                    settings.entities.load_power,
+                    settings.load_profile,
+                    tz,
+                    outdoor_temp=settings.entities.outdoor_temp,
                 ),
             )
             watcher = PriceWatcher(settings)

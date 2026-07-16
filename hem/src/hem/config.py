@@ -93,6 +93,10 @@ class Entities(BaseModel):
     # House load power sensor (W or kW), required for load_profile.source:
     # history — e.g. the mkaiser package's sensor.load_power.
     load_power: str = ""
+    # Outdoor temperature sensor with long-term statistics (state_class set).
+    # Optional; with source: history it enables the learned temperature
+    # response (load vs cooling/heating degrees), replacing temp_rules.
+    outdoor_temp: str = ""
 
     @model_validator(mode="after")
     def _default_forecast_entities(self) -> Self:
@@ -147,7 +151,10 @@ class LoadProfile(BaseModel):
     # learned averages already include typical heating/cooling — keep
     # temp_rules for extreme-day corrections only.
     source: Literal["profile", "history"] = "profile"
-    history_days: int = Field(default=14, ge=1, le=28)
+    # Learning window. Hourly long-term statistics reach months back; the raw
+    # recorder-history fallback is capped by the recorder purge window (~10
+    # days) regardless of this value.
+    history_days: int = Field(default=60, ge=1, le=365)
 
 
 class Optimizer(BaseModel):

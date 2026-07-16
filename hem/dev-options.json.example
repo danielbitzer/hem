@@ -8,7 +8,8 @@
     "battery_soc": "sensor.battery_level",
     "battery_power": "sensor.battery_power",
     "weather": "weather.henley_beach_hourly",
-    "load_power": "sensor.load_power"
+    "load_power": "sensor.load_power",
+    "outdoor_temp": "sensor.outdoor_temperature"
   },
   "battery": {
     "capacity_kwh": 12.8,
@@ -37,7 +38,7 @@
       { "when": "temp_below", "threshold_c": 12.0, "add_kw": 1.2 }
     ],
     "source": "history",
-    "history_days": 14
+    "history_days": 60
   },
   "log_level": "debug"
 }

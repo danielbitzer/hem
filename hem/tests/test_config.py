@@ -60,7 +60,7 @@ def test_history_load_source_requires_load_power_entity(tmp_path: Path):
     options["entities"]["load_power"] = "sensor.load_power"
     settings = load_settings(write_options(tmp_path, options))
     assert settings.load_profile.source == "history"
-    assert settings.load_profile.history_days == 14
+    assert settings.load_profile.history_days == 60
 
 
 def test_load_profile_must_have_24_values(tmp_path: Path):

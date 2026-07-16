@@ -9,6 +9,7 @@ from hem.config import LoadProfile, TempRule
 from hem.forecast.load import (
     BaselineLoadForecaster,
     HistoryLoadForecaster,
+    fit_load_model,
     learn_hourly_profile,
 )
 from hem.timegrid import TimeGrid
@@ -154,9 +155,9 @@ async def test_history_refresh_rate_limited():
     async with fake_ha_client(fake) as client:
         fc = HistoryLoadForecaster(client, "sensor.load_power", PROFILE, ADELAIDE)
         await fc.refresh(NOW)
-        await fc.refresh(NOW + timedelta(minutes=5))
-        assert len(fake.history_requests) == 1
         await fc.refresh(NOW + timedelta(hours=7))
+        assert len(fake.history_requests) == 1  # daily cadence: 7h is too soon
+        await fc.refresh(NOW + timedelta(hours=25))
         assert len(fake.history_requests) == 2
 
 
@@ -176,3 +177,91 @@ async def test_history_failure_never_fatal_and_retries_later():
         await fc.refresh(NOW + timedelta(minutes=31))
         assert len(fake.history_requests) == 1  # retried after RETRY_INTERVAL
         assert np.allclose(fc.forecast(grid, None), baseline)
+
+
+# --- temperature response (long-term statistics) ------------------------------
+
+# Synthetic truth: load = 0.4 kW + 0.1 kW per cooling degree above 22°C.
+# Days alternate mild (18°C, cdh 0) and hot (28°C, cdh 6); Jul 13–17 are
+# weekdays (18,28,18,28,18 -> bucket mean cdh 2.4, mean load 0.64 kW).
+
+BASE_KW = 0.4
+COOL_SLOPE = 0.1
+
+
+def synth_day_temp(day: int) -> float:
+    return 18.0 if (day - 13) % 2 == 0 else 28.0
+
+
+def synth_records(days: range) -> list[tuple[datetime, float, float | None]]:
+    out = []
+    for day in days:
+        t = synth_day_temp(day)
+        kw = BASE_KW + COOL_SLOPE * max(t - 22.0, 0.0)
+        out.extend((local(day, h), kw, t) for h in range(24))
+    return out
+
+
+def test_fit_recovers_cooling_slope_and_predicts_forecast_temps():
+    model = fit_load_model(synth_records(range(13, 20)), ADELAIDE)
+    assert model.has_temp_response
+    assert model.cool_kw_per_deg == pytest.approx(COOL_SLOPE)
+    assert model.heat_kw_per_deg == pytest.approx(0.0)
+    # weekday bucket: unbiased at bucket-typical temp, tracks forecast deviation
+    assert model.base[0][10] == pytest.approx(0.64)
+    assert model.predict(0, 10, 30.0) == pytest.approx(BASE_KW + COOL_SLOPE * 8)
+    assert model.predict(0, 10, 20.0) == pytest.approx(BASE_KW)
+    assert model.predict(0, 10, None) == pytest.approx(0.64)  # no temps -> bucket mean
+
+
+def test_fit_without_enough_temp_hours_is_base_only():
+    records = [(ts, kw, None) for ts, kw, _ in synth_records(range(13, 20))]
+    records[0] = (records[0][0], records[0][1], 25.0)  # one joint hour is not enough
+    model = fit_load_model(records, ADELAIDE)
+    assert not model.has_temp_response
+    assert model.cool_kw_per_deg == 0.0
+
+
+def stat_rows(values: list[tuple[datetime, float]]) -> list[dict]:
+    return [{"start": int(ts.timestamp() * 1000), "mean": v} for ts, v in values]
+
+
+async def test_lts_learning_with_temperature_response():
+    fake = FakeHa()
+    fake.statistics_meta = {"sensor.load_power": "W", "sensor.outdoor_temp": "°C"}
+    records = synth_records(range(13, 20))
+    fake.statistics = {
+        "sensor.load_power": stat_rows([(ts, kw * 1000) for ts, kw, _ in records]),
+        "sensor.outdoor_temp": stat_rows([(ts, t) for ts, _, t in records]),
+    }
+    async with fake_ha_client(fake) as client:
+        fc = HistoryLoadForecaster(
+            client,
+            "sensor.load_power",
+            PROFILE,
+            ADELAIDE,
+            temp_entity_id="sensor.outdoor_temp",
+        )
+        await fc.refresh(datetime(2026, 7, 20, 0, 0, tzinfo=UTC))
+        assert len(fake.history_requests) == 0  # LTS path, no raw history needed
+        grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)
+        hot = fc.forecast(grid, np.array([30.0, 30.0]))
+        mild = fc.forecast(grid, np.array([20.0, 20.0]))
+    # forecast temps drive the response; PROFILE's temp_above rule (+1.5 kW
+    # above 28°C) must NOT stack on top of the learned response
+    assert np.allclose(hot, BASE_KW + COOL_SLOPE * 8)
+    assert np.allclose(mild, BASE_KW)
+
+
+async def test_lts_unavailable_falls_back_to_raw_history():
+    fake = FakeHa()  # no statistics_meta: sensor has no state_class
+    fake.states["sensor.load_power"] = load_power_state("W")
+    samples = [s for day in (13, 14, 15) for s in hour_of_samples(day, 10, 1500.0)]
+    fake.history["sensor.load_power"] = history_items(samples)
+    async with fake_ha_client(fake) as client:
+        fc = HistoryLoadForecaster(client, "sensor.load_power", PROFILE, ADELAIDE)
+        await fc.refresh(NOW)
+        assert len(fake.history_requests) == 1
+        grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)
+        out = fc.forecast(grid, None)
+    assert out[1] == pytest.approx(1.5)  # learned from raw history

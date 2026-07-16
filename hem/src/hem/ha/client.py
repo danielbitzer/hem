@@ -10,7 +10,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from types import TracebackType
 from typing import Any, Self
 
@@ -160,6 +160,84 @@ class HaClient:
             body = await resp.json()
         return body["service_response"] if return_response else body
 
+
+    async def ws_command(self, message: dict[str, Any], timeout_s: float = 30.0) -> Any:
+        """One-shot WebSocket command: connect, auth, send, return the result.
+
+        Some recorder APIs (long-term statistics) exist only over WebSocket.
+        A fresh connection per call is fine at daily cadence.
+        """
+        async with (
+            self.session.ws_connect(self._conn.ws_url, heartbeat=30) as ws,
+            asyncio.timeout(timeout_s),
+        ):
+            first = await ws.receive_json()
+            if first.get("type") != "auth_required":
+                raise RuntimeError(f"unexpected WS greeting: {first.get('type')}")
+            await ws.send_json({"type": "auth", "access_token": self._conn.token})
+            auth = await ws.receive_json()
+            if auth.get("type") != "auth_ok":
+                raise RuntimeError(f"WebSocket auth failed: {auth}")
+            await ws.send_json({"id": 1, **message})
+            while True:
+                reply = await ws.receive_json()
+                if reply.get("type") != "result":
+                    continue
+                if not reply.get("success"):
+                    raise RuntimeError(f"WS command failed: {reply.get('error')}")
+                return reply.get("result")
+
+    async def get_statistics(
+        self,
+        statistic_ids: list[str],
+        start: datetime,
+        end: datetime,
+        *,
+        units: dict[str, str] | None = None,
+    ) -> dict[str, list[tuple[datetime, float]]]:
+        """Hourly long-term statistics (mean) as (interval start UTC, value).
+
+        LTS survives recorder purging, so this reaches months back where
+        get_history reaches days. Sensors without a state_class have no LTS
+        and simply come back absent from the result.
+        """
+        result = await self.ws_command(
+            {
+                "type": "recorder/statistics_during_period",
+                "start_time": start.isoformat(),
+                "end_time": end.isoformat(),
+                "statistic_ids": statistic_ids,
+                "period": "hour",
+                "types": ["mean"],
+                **({"units": units} if units else {}),
+            }
+        )
+        out: dict[str, list[tuple[datetime, float]]] = {}
+        for stat_id, rows in (result or {}).items():
+            series = []
+            for row in rows:
+                if row.get("mean") is None:
+                    continue
+                ts = row["start"]
+                # ms epoch from modern HA; ISO strings from older versions
+                when = (
+                    datetime.fromtimestamp(ts / 1000, tz=UTC)
+                    if isinstance(ts, (int, float))
+                    else datetime.fromisoformat(ts)
+                )
+                series.append((when, float(row["mean"])))
+            out[stat_id] = series
+        return out
+
+    async def get_statistics_metadata(self, statistic_ids: list[str]) -> dict[str, str | None]:
+        """statistic_id -> unit for entities that HAVE long-term statistics;
+        entities without a state_class are simply absent from the result."""
+        result = await self.ws_command(
+            {"type": "recorder/get_statistics_metadata", "statistic_ids": statistic_ids}
+        )
+        return {
+            m["statistic_id"]: m.get("statistics_unit_of_measurement") for m in (result or [])
+        }
 
     async def watch_states(
         self,

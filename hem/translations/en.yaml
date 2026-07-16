@@ -4,7 +4,8 @@ configuration:
     description: >-
       Entity IDs for prices, solar forecast, battery state and weather.
       load_power (optional) is a house load sensor in W or kW, required for
-      the history load-profile source.
+      the history load-profile source; outdoor_temp (optional) enables the
+      learned temperature response.
   battery:
     name: Battery parameters
     description: >-
