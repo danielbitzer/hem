@@ -142,7 +142,7 @@ is lost.
 > discharge to load). A future `no_discharge` action will handle it distinctly.
 | `sensor.hem_power_setpoint` | recommended battery power, kW (+charge / −discharge) |
 | `sensor.hem_soc_target` | planned SoC at end of the current interval |
-| `sensor.hem_horizon_cost` | expected net cost ($) over the horizon |
+| `sensor.hem_horizon_cost` | expected net meter cash flow ($) over the horizon: imports at forecast buy prices − exports at forecast sell prices; negative = earning. Excludes wear cost and the value of energy still stored at the horizon end |
 
 These sensors are republished every cycle and disappear on HA restart until the next
 cycle (~5 min). The full interval-by-interval plan is not published as a sensor —

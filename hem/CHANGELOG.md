@@ -4,6 +4,9 @@
 
 - Dashboard: "Amber buy / sell" tile — the live prices the current action was
   optimized against, with the 5-minute interval they apply to (#1).
+- Dashboard: hover tooltip on the Horizon cost tile explaining what the
+  number is (net meter cash flow over the horizon; excludes wear and
+  terminal stored value); DOCS sensor table clarified to match.
 
 ## 0.1.6
 
