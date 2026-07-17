@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.7
 
 - Dashboard: "Amber buy / sell" tile — the live prices the current action was
   optimized against, with the 5-minute interval they apply to (#1).
