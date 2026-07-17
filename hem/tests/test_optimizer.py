@@ -286,3 +286,16 @@ def test_soc_glitch_above_capacity_still_clamped():
     inputs = make_inputs(soc0=99.0)  # sensor glitch beyond physical capacity
     sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.05))
     assert sol.soc_kwh[0] == pytest.approx(BATTERY.soc_max_kwh)
+
+
+def test_empty_battery_flat_prices_serves_load_by_import_not_charging():
+    """An empty battery must NOT be preemptively charged to serve later load:
+    direct import (AC passthrough in self-consumption) skips the AC-DC round
+    trip, so at flat prices charge-then-discharge is strictly worse than
+    import. Grid charging from empty must only appear for real arbitrage.
+    """
+    inputs = make_inputs(buy=0.30, sell=0.10, load=1.5, soc0=0.0)
+    terminal = auto_terminal_value(inputs.buy, BATTERY)
+    sol = solve(inputs, BATTERY, GRID, config(terminal_value=terminal))
+    assert sol.charge_kw.max() < 0.01  # never charges just to re-serve load
+    assert float(np.min(sol.grid_import_kw)) >= 1.5 - 1e-6  # load fed directly
