@@ -17,9 +17,9 @@ jobs:
       run:
         working-directory: hem
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v8
 
       - name: Install dependencies
         run: uv sync --frozen
@@ -41,7 +41,7 @@ jobs:
       matrix:
         arch: [aarch64, amd64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
