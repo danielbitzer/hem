@@ -22,6 +22,10 @@
   .tile { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
           padding: 10px 16px; min-width: 130px; }
   .tile .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .tile .help { display: inline-block; width: 13px; height: 13px; line-height: 12px;
+                margin-left: 5px; border: 1px solid var(--muted); border-radius: 50%;
+                color: var(--muted); font-size: 9px; text-align: center; cursor: help;
+                vertical-align: text-bottom; }
   .tile .v { font-size: 20px; font-weight: 600; margin-top: 2px; }
   .tile .s { color: var(--muted); font-size: 11px; margin-top: 2px; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
@@ -48,7 +52,7 @@
     <div class="s" id="t-price-period"></div></div>
   <div class="tile"><div class="k">Battery setpoint</div><div class="v" id="t-power">–</div></div>
   <div class="tile"><div class="k">SoC target</div><div class="v" id="t-soc">–</div></div>
-  <div class="tile" title="Expected net cash flow at the meter over the plan horizon: planned grid imports at forecast buy prices minus exports at forecast sell prices. Negative = net earnings. Excludes battery wear cost and the value of energy still stored at the horizon end, so a plan that ends with a full battery looks 'worse' than one that sold everything."><div class="k">Horizon cost</div><div class="v" id="t-cost">–</div></div>
+  <div class="tile"><div class="k">Horizon cost<span class="help" title="Expected net cash flow at the meter over the plan horizon: planned grid imports at forecast buy prices minus exports at forecast sell prices. Negative = net earnings. Excludes battery wear cost and the value of energy still stored at the horizon end, so a plan that ends with a full battery looks 'worse' than one that sold everything.">?</span></div><div class="v" id="t-cost">–</div></div>
   <div class="tile"><div class="k">Forecast load</div><div class="v" id="t-load">–</div></div>
 </div>
 <div class="card"><h2>Prices $/kWh (buy / sell)</h2><div id="chart-prices"></div></div>
