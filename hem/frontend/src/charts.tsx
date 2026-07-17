@@ -1,0 +1,268 @@
+import type { ReactNode } from "react";
+import {
+  Area,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ReferenceArea,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  CHART_MARGIN,
+  fmtDayTime,
+  fmtTime,
+  GUTTER,
+  gridStroke,
+  SERIES,
+  useDark,
+} from "./theme";
+import { setHoverT } from "./hover";
+
+export interface Row {
+  t: number; // interval start, epoch ms
+  buy: number;
+  sell: number;
+  pv: number;
+  load: number;
+  battery: number; // +charge / −discharge
+  gridImport: number;
+  gridExport: number; // plotted negative (power leaving the house)
+  soc: number; // kWh at interval end
+}
+
+/** Hourly-aligned ticks every `stepHours`, matching the plan's local timezone. */
+export function makeTicks(t0: number, tEnd: number, stepHours = 2): number[] {
+  const first = new Date(t0);
+  first.setMinutes(0, 0, 0);
+  while (first.getTime() < t0) first.setHours(first.getHours() + 1);
+  const ticks: number[] = [];
+  for (const d = first; d.getTime() <= tEnd; d.setHours(d.getHours() + stepHours)) {
+    ticks.push(d.getTime());
+  }
+  return ticks;
+}
+
+export function LegendRow({ items }: { items: { label: string; color: string }[] }) {
+  return (
+    <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+      {items.map(({ label, color }) => (
+        <span key={label} className="inline-flex items-center gap-1.5">
+          <span className="size-2.5 rounded-full" style={{ background: color }} />
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+type TipPayload = { name?: string | number; value?: number | string; color?: string }[];
+
+function ChartTip({
+  active,
+  payload,
+  label,
+  format,
+}: {
+  active?: boolean;
+  payload?: TipPayload;
+  label?: number | string;
+  format: (name: string, value: number) => string;
+}) {
+  if (!active || !payload?.length || typeof label !== "number") return null;
+  return (
+    <div className="rounded-lg border border-edge bg-card px-3 py-2 text-xs shadow-sm">
+      <div className="mb-1 font-semibold">{fmtDayTime(label)}</div>
+      {payload.map((p) =>
+        typeof p.value === "number" && typeof p.name === "string" ? (
+          <div key={p.name} className="flex items-center gap-1.5">
+            <span className="size-2 rounded-full" style={{ background: p.color }} />
+            <span className="text-muted">{p.name}:</span>
+            <span className="font-semibold">{format(p.name, p.value)}</span>
+          </div>
+        ) : null,
+      )}
+    </div>
+  );
+}
+
+export function Card({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="mb-3.5 rounded-xl border border-edge bg-card p-3">
+      <h2 className="mb-1 text-[13px] font-semibold text-muted">{title}</h2>
+      {children}
+    </div>
+  );
+}
+
+interface HemChartProps {
+  data: Row[];
+  domain: [number, number];
+  height?: number;
+  yTickFormat: (v: number) => string;
+  yDomain?: [number, number];
+  format: (name: string, value: number) => string;
+  children: ReactNode; // series + reference elements
+}
+
+/** Shared chart frame: fixed gutter, hourly ticks, synced tooltip + hover. */
+export function HemChart({
+  data,
+  domain,
+  height = 220,
+  yTickFormat,
+  yDomain,
+  format,
+  children,
+}: HemChartProps) {
+  const dark = useDark();
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <ComposedChart
+        data={data}
+        margin={CHART_MARGIN}
+        syncId="hem"
+        onMouseMove={(state) => {
+          const label = (state as { activeLabel?: number | string }).activeLabel;
+          setHoverT(typeof label === "number" ? label : null);
+        }}
+        onMouseLeave={() => setHoverT(null)}
+      >
+        <CartesianGrid stroke={gridStroke(dark)} vertical={false} />
+        <XAxis
+          dataKey="t"
+          type="number"
+          domain={domain}
+          ticks={makeTicks(domain[0], domain[1])}
+          tickFormatter={fmtTime}
+          tick={{ fontSize: 11 }}
+          tickLine={false}
+          axisLine={{ stroke: gridStroke(dark) }}
+        />
+        <YAxis
+          width={GUTTER}
+          domain={yDomain}
+          tickFormatter={yTickFormat}
+          tick={{ fontSize: 11 }}
+          tickLine={false}
+          axisLine={false}
+        />
+        <Tooltip
+          content={<ChartTip format={format} />}
+          isAnimationActive={false}
+          cursor={{ stroke: dark ? "#6e6e78" : "#90909a", strokeDasharray: "4 3" }}
+        />
+        {children}
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
+
+const kw = (_: string, v: number) => `${v.toFixed(2)} kW`;
+const dollars = (_: string, v: number) => `$${v.toFixed(3)}`;
+
+export function PricesChart({
+  rows,
+  domain,
+  forecastEnd,
+}: {
+  rows: Row[];
+  domain: [number, number];
+  forecastEnd: number | null;
+}) {
+  const dark = useDark();
+  const padded = forecastEnd !== null && forecastEnd < domain[1];
+  return (
+    <Card title="Prices $/kWh (buy / sell)">
+      <LegendRow
+        items={[
+          { label: "buy", color: SERIES.buy },
+          { label: "sell", color: SERIES.sell },
+        ]}
+      />
+      <HemChart data={rows} domain={domain} yTickFormat={(v) => v.toFixed(2)} format={dollars}>
+        {padded && (
+          <ReferenceArea
+            x1={forecastEnd}
+            x2={domain[1]}
+            fill={dark ? "#3a3a40" : "#e9e9ee"}
+            fillOpacity={0.45}
+            label={{
+              value: "forecast padded",
+              angle: -90,
+              position: "insideTopLeft",
+              fontSize: 10,
+              fill: dark ? "#9a9aa2" : "#6e6e73",
+            }}
+          />
+        )}
+        <Line dataKey="buy" name="buy" type="stepAfter" stroke={SERIES.buy} strokeWidth={2} dot={false} isAnimationActive={false} />
+        <Line dataKey="sell" name="sell" type="stepAfter" stroke={SERIES.sell} strokeWidth={2} dot={false} isAnimationActive={false} />
+      </HemChart>
+    </Card>
+  );
+}
+
+export function ForecastChart({ rows, domain }: { rows: Row[]; domain: [number, number] }) {
+  return (
+    <Card title="Forecast kW (PV / load)">
+      <LegendRow
+        items={[
+          { label: "PV", color: SERIES.pv },
+          { label: "load", color: SERIES.load },
+        ]}
+      />
+      <HemChart data={rows} domain={domain} yTickFormat={(v) => v.toFixed(0)} format={kw}>
+        <Line dataKey="pv" name="PV" type="stepAfter" stroke={SERIES.pv} strokeWidth={2} dot={false} isAnimationActive={false} />
+        <Line dataKey="load" name="load" type="stepAfter" stroke={SERIES.load} strokeWidth={2} dot={false} isAnimationActive={false} />
+      </HemChart>
+    </Card>
+  );
+}
+
+export function BatteryChart({ rows, domain }: { rows: Row[]; domain: [number, number] }) {
+  return (
+    <Card title="Planned battery power kW (+charge / −discharge) & grid flows">
+      <LegendRow
+        items={[
+          { label: "battery", color: SERIES.battery },
+          { label: "import", color: SERIES.gridImport },
+          { label: "export", color: SERIES.gridExport },
+        ]}
+      />
+      <HemChart data={rows} domain={domain} yTickFormat={(v) => v.toFixed(0)} format={kw}>
+        <Area dataKey="battery" name="battery" type="stepAfter" stroke={SERIES.battery} strokeWidth={2} fill={SERIES.battery} fillOpacity={0.3} isAnimationActive={false} />
+        <Area dataKey="gridImport" name="import" type="stepAfter" stroke={SERIES.gridImport} strokeWidth={2} fill={SERIES.gridImport} fillOpacity={0.18} isAnimationActive={false} />
+        <Area dataKey="gridExport" name="export" type="stepAfter" stroke={SERIES.gridExport} strokeWidth={2} fill={SERIES.gridExport} fillOpacity={0.18} isAnimationActive={false} />
+      </HemChart>
+    </Card>
+  );
+}
+
+export function SocChart({
+  rows,
+  domain,
+  capacity,
+}: {
+  rows: Row[];
+  domain: [number, number];
+  capacity: number | null;
+}) {
+  const format = (_: string, v: number) =>
+    capacity ? `${v.toFixed(1)} kWh · ${((100 * v) / capacity).toFixed(0)}%` : `${v.toFixed(1)} kWh`;
+  return (
+    <Card title="Planned state of charge kWh">
+      <HemChart
+        data={rows}
+        domain={domain}
+        yTickFormat={(v) => v.toFixed(0)}
+        yDomain={capacity ? [0, capacity] : undefined}
+        format={format}
+      >
+        <Area dataKey="soc" name="SoC" type="monotone" stroke={SERIES.battery} strokeWidth={2} fill={SERIES.battery} fillOpacity={0.12} isAnimationActive={false} />
+      </HemChart>
+    </Card>
+  );
+}

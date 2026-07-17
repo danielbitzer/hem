@@ -44,12 +44,24 @@ def test_health_and_plan_endpoints():
     assert body["intervals"][0]["power_kw"] == -3.2
 
 
-def test_index_and_static_served():
-    client = TestClient(create_app(AppState()))
+def test_dashboard_served_from_dist(tmp_path):
+    # simulate a Vite build: index.html + a hashed asset
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text(
+        '<!doctype html><title>HEM</title><script src="./assets/index-abc.js"></script>'
+    )
+    (tmp_path / "assets" / "index-abc.js").write_text("console.log('hem')")
+    client = TestClient(create_app(AppState(), dist_dir=tmp_path))
     index = client.get("/")
     assert index.status_code == 200
-    assert "Home Energy Manager" in index.text
-    assert './static/apexcharts.min.js' in index.text
-    js = client.get("/static/apexcharts.min.js")
-    assert js.status_code == 200
-    assert "ApexCharts" in js.text[:200]
+    assert "HEM" in index.text
+    assert client.get("/assets/index-abc.js").status_code == 200
+    # API routes registered before the mount still win
+    assert client.get("/api/plan").status_code == 404
+
+
+def test_missing_dist_says_how_to_build(tmp_path):
+    client = TestClient(create_app(AppState(), dist_dir=tmp_path / "nope"))
+    resp = client.get("/")
+    assert resp.status_code == 503
+    assert "bun run build" in resp.json()["error"]

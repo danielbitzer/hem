@@ -99,12 +99,13 @@ self-consumption when HEM's heartbeat goes stale. See
 | Numerics | numpy (no pandas; the time-grid resampler is ~50 lines) |
 | HA I/O | aiohttp — REST for states/publishing, WebSocket for event-triggered re-solves |
 | Config | pydantic + pydantic-settings (add-on options JSON / `HEM_*` env) |
-| Dashboard | FastAPI + uvicorn behind HA ingress, vendored ApexCharts |
+| Dashboard | React 19 (+ React Compiler) + Recharts + Tailwind, built with Vite/Bun into a fully offline bundle; served by FastAPI + uvicorn behind HA ingress |
 | Packaging | uv-locked deps; Debian-based image (cvxpy has no musl wheels); multi-arch (amd64/aarch64) prebuilt via GitHub Actions → GHCR |
 
 Layout: the repo root is an HA add-on repository; the add-on and all Python
 lives in [hem/](hem/) (`src/hem/` — adapters, timegrid, optimizer, planner,
-publisher, web), with the actuator blueprint in
+publisher, web; the React dashboard sources in `frontend/`), with the actuator
+blueprint in
 [blueprints/](blueprints/).
 
 ## Install (HA OS / Supervised)

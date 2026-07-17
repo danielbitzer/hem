@@ -1,8 +1,8 @@
 """Ingress web app.
 
-/health for the Supervisor watchdog, /api/plan for the latest plan, and a
-placeholder page (charts arrive in Phase 5). All URLs must stay relative so
-the page works unchanged behind HA ingress.
+/health for the Supervisor watchdog, /api/plan for the latest plan, and the
+built React dashboard (hem/frontend, built by Vite into web/dist). All URLs
+must stay relative so the page works unchanged behind HA ingress.
 """
 
 from __future__ import annotations
@@ -12,14 +12,16 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from hem import __version__
 from hem.models import Plan
 
 HEALTHY_WINDOW = timedelta(minutes=15)
-STATIC_DIR = Path(__file__).parent / "static"
+# Vite build output (hem/frontend -> `bun run build`); gitignored, built by CI
+# before the image build and shipped inside the package.
+DIST_DIR = Path(__file__).parent / "dist"
 
 
 @dataclass
@@ -51,7 +53,7 @@ class AppState:
     meta: dict = field(default_factory=dict)
 
 
-def create_app(state: AppState) -> FastAPI:
+def create_app(state: AppState, dist_dir: Path = DIST_DIR) -> FastAPI:
     app = FastAPI(title="HEM", version=__version__)
     health = state.health
 
@@ -97,9 +99,18 @@ def create_app(state: AppState) -> FastAPI:
         }
         return JSONResponse(body, status_code=200 if health.healthy else 503)
 
-    @app.get("/")
-    async def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
+    if (dist_dir / "index.html").exists():
+        # Registered after the API routes, so those match first. html=True
+        # serves index.html at "/" and the hashed Vite assets relative to it.
+        app.mount("/", StaticFiles(directory=dist_dir, html=True), name="dashboard")
+    else:
+        # Dev checkout without a built frontend: keep the API useful and say
+        # exactly what is missing instead of a bare 404.
+        @app.get("/")
+        async def index() -> JSONResponse:
+            return JSONResponse(
+                {"error": "dashboard not built — run `bun run build` in hem/frontend"},
+                status_code=503,
+            )
 
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app
