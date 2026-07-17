@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Dashboard: "Amber buy / sell" tile — the live prices the current action was
+  optimized against, with the 5-minute interval they apply to (#1).
+
 ## 0.1.6
 
 - Dashboard: a load-forecast info line under the header — how many days of
