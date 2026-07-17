@@ -1,9 +1,9 @@
 import { useState } from "react";
-import type { PlanInterval } from "./api";
-import { Card } from "./charts";
+import { Card, type Row, TooltipPanel } from "./charts";
 import { useHoverT } from "./hover";
 import {
   ACTION_COLORS,
+  cursorStroke,
   fmtDayTime,
   GUTTER,
   idleSegmentColor,
@@ -17,40 +17,37 @@ interface Segment {
   endMs: number;
 }
 
-function mergeSegments(intervals: PlanInterval[]): Segment[] {
+function mergeSegments(rows: Row[]): Segment[] {
   const out: Segment[] = [];
-  for (const iv of intervals) {
-    const startMs = Date.parse(iv.start);
-    const endMs = Date.parse(iv.end);
+  for (const row of rows) {
     const last = out[out.length - 1];
-    if (last && last.action === iv.action && last.endMs === startMs) {
-      last.endMs = endMs;
-    } else {
-      out.push({ action: iv.action, startMs, endMs });
+    if (last && last.action === row.action && last.endMs === row.t) {
+      last.endMs = row.end;
+    } else if (row.end > row.t) {
+      out.push({ action: row.action, startMs: row.t, endMs: row.end });
     }
   }
   return out;
 }
 
+// Keep the local tooltip's center clamped this far from the strip edges so
+// the translate(-50%) panel stays inside the card.
+const TIP_EDGE_PX = 90;
+
 /**
  * Custom timeline strip (Recharts has no rangeBar): colored segments per
  * contiguous action run, positioned by % of the shared time domain so it
- * aligns with the charts' plot areas (same gutter + right margin). Shows its
- * own hover tooltip and the crosshair synced from the charts.
+ * aligns with the charts' plot areas (same gutter + right margin; see the
+ * CHART_MARGIN invariant note in theme.ts). Shows its own hover tooltip and
+ * the crosshair synced from the charts.
  */
-export function ModeStrip({
-  intervals,
-  domain,
-}: {
-  intervals: PlanInterval[];
-  domain: [number, number];
-}) {
+export function ModeStrip({ rows, domain }: { rows: Row[]; domain: [number, number] }) {
   const dark = useDark();
   const hoverT = useHoverT();
-  const [local, setLocal] = useState<{ x: number; seg: Segment } | null>(null);
+  const [local, setLocal] = useState<{ x: number; width: number; seg: Segment } | null>(null);
   const [t0, tEnd] = domain;
   const span = tEnd - t0;
-  const segments = mergeSegments(intervals);
+  const segments = mergeSegments(rows);
   const pct = (ms: number) => (100 * (ms - t0)) / span;
 
   const cursorPct = hoverT !== null && hoverT >= t0 && hoverT <= tEnd ? pct(hoverT) : null;
@@ -65,7 +62,7 @@ export function ModeStrip({
             const frac = (e.clientX - box.left) / box.width;
             const ms = t0 + frac * span;
             const seg = segments.find((s) => ms >= s.startMs && ms < s.endMs);
-            setLocal(seg ? { x: e.clientX - box.left, seg } : null);
+            setLocal(seg ? { x: e.clientX - box.left, width: box.width, seg } : null);
           }}
           onMouseLeave={() => setLocal(null)}
         >
@@ -74,8 +71,8 @@ export function ModeStrip({
               key={seg.startMs}
               className="absolute top-1 bottom-1 rounded-[3px]"
               style={{
-                left: `${pct(Math.max(seg.startMs, t0))}%`,
-                width: `${pct(Math.min(seg.endMs, tEnd)) - pct(Math.max(seg.startMs, t0))}%`,
+                left: `${pct(seg.startMs)}%`,
+                width: `${pct(seg.endMs) - pct(seg.startMs)}%`,
                 background:
                   seg.action === "idle"
                     ? idleSegmentColor(dark)
@@ -86,19 +83,26 @@ export function ModeStrip({
           {cursorPct !== null && (
             <div
               className="pointer-events-none absolute top-0 bottom-0 border-l border-dashed"
-              style={{ left: `${cursorPct}%`, borderColor: dark ? "#6e6e78" : "#90909a" }}
+              style={{ left: `${cursorPct}%`, borderColor: cursorStroke(dark) }}
             />
           )}
           {local && (
             <div
-              className="pointer-events-none absolute -top-1 z-10 -translate-y-full rounded-lg border border-edge bg-card px-3 py-1.5 text-xs shadow-sm"
-              style={{ left: Math.min(Math.max(local.x, 40), 9999), transform: "translate(-50%, -100%)" }}
+              className="pointer-events-none absolute -top-1 z-10"
+              style={{
+                left: Math.min(Math.max(local.x, TIP_EDGE_PX), local.width - TIP_EDGE_PX),
+                transform: "translate(-50%, -100%)",
+              }}
             >
-              <span className="font-semibold">{local.seg.action.replace("_", " ")}</span>
-              <span className="text-muted">
-                {" "}
-                {fmtDayTime(local.seg.startMs)} → {fmtDayTime(local.seg.endMs)}
-              </span>
+              <TooltipPanel>
+                <span className="font-semibold whitespace-nowrap">
+                  {local.seg.action.replace("_", " ")}
+                </span>
+                <span className="text-muted whitespace-nowrap">
+                  {" "}
+                  {fmtDayTime(local.seg.startMs)} → {fmtDayTime(local.seg.endMs)}
+                </span>
+              </TooltipPanel>
             </div>
           )}
         </div>

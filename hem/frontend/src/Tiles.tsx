@@ -1,4 +1,5 @@
 import type { PlanResponse } from "./api";
+import type { Row } from "./charts";
 import { ACTION_COLORS, fmtTime } from "./theme";
 
 const HORIZON_COST_HELP =
@@ -42,18 +43,15 @@ function Tile({
   );
 }
 
-export function Tiles({ plan }: { plan: PlanResponse }) {
-  const step0 = plan.intervals[0];
+export function Tiles({ plan, rows }: { plan: PlanResponse; rows: Row[] }) {
+  const step0 = rows[0];
   if (!step0) return null;
   const cap = plan.meta.capacity_kwh;
   const forced = step0.action === "charge" || step0.action === "discharge";
 
-  const loadKwh = plan.intervals.reduce(
-    (sum, iv) => sum + (iv.load_kw * (Date.parse(iv.end) - Date.parse(iv.start))) / 3_600_000,
-    0,
-  );
-  const last = plan.intervals[plan.intervals.length - 1]!;
-  const horizonH = (Date.parse(last.end) - Date.parse(step0.start)) / 3_600_000;
+  const loadKwh = rows.reduce((sum, r) => sum + (r.load * (r.end - r.t)) / 3_600_000, 0);
+  const last = rows[rows.length - 1]!;
+  const horizonH = (last.end - step0.t) / 3_600_000;
 
   return (
     <div className="mb-4 flex flex-wrap gap-3">
@@ -65,15 +63,15 @@ export function Tiles({ plan }: { plan: PlanResponse }) {
       <Tile
         label="Amber buy / sell"
         value={`$${step0.buy.toFixed(2)} / $${step0.sell.toFixed(2)}`}
-        sub={`${fmtTime(Date.parse(step0.start))} – ${fmtTime(Date.parse(step0.end))}`}
+        sub={`${fmtTime(step0.t)} – ${fmtTime(step0.end)}`}
       />
-      <Tile label="Battery setpoint" value={forced ? `${step0.power_kw.toFixed(2)} kW` : "—"} />
+      <Tile label="Battery setpoint" value={forced ? `${step0.battery.toFixed(2)} kW` : "—"} />
       <Tile
         label="SoC target"
         value={
           cap
-            ? `${((100 * step0.soc_end) / cap).toFixed(0)}% · ${step0.soc_end.toFixed(1)} kWh`
-            : `${step0.soc_end.toFixed(1)} kWh`
+            ? `${((100 * step0.soc) / cap).toFixed(0)}% · ${step0.soc.toFixed(1)} kWh`
+            : `${step0.soc.toFixed(1)} kWh`
         }
       />
       <Tile label="Horizon cost" value={`$${plan.objective_cost.toFixed(2)}`} help={HORIZON_COST_HELP} />

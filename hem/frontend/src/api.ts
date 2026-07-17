@@ -32,10 +32,12 @@ export interface LoadForecastInfo {
   cool_kw_per_deg?: number;
 }
 
+// Some fields are not consumed by the UI (yet) — this file mirrors the FULL
+// payload so the contract is visible in one place.
 export interface PlanMeta {
   capacity_kwh?: number;
   price_forecast_end?: string | null;
-  coverage?: Record<string, number>;
+  coverage?: Record<string, number> | null;
   load_forecast?: "learned" | "pending" | "unconfigured";
   load_forecast_info?: LoadForecastInfo;
 }

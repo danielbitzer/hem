@@ -10,8 +10,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import type { Action } from "./api";
 import {
   CHART_MARGIN,
+  cursorStroke,
   fmtDayTime,
   fmtTime,
   GUTTER,
@@ -21,8 +23,12 @@ import {
 } from "./theme";
 import { setHoverT } from "./hover";
 
+// One parsed interval — timestamps are parsed exactly once, in App, and every
+// consumer (charts, tiles, mode strip) works from these numbers.
 export interface Row {
   t: number; // interval start, epoch ms
+  end: number; // interval end, epoch ms
+  action: Action;
   buy: number;
   sell: number;
   pv: number;
@@ -34,7 +40,7 @@ export interface Row {
 }
 
 /** Hourly-aligned ticks every `stepHours`, matching the plan's local timezone. */
-export function makeTicks(t0: number, tEnd: number, stepHours = 2): number[] {
+function makeTicks(t0: number, tEnd: number, stepHours = 2): number[] {
   const first = new Date(t0);
   first.setMinutes(0, 0, 0);
   while (first.getTime() < t0) first.setHours(first.getHours() + 1);
@@ -45,7 +51,7 @@ export function makeTicks(t0: number, tEnd: number, stepHours = 2): number[] {
   return ticks;
 }
 
-export function LegendRow({ items }: { items: { label: string; color: string }[] }) {
+function LegendRow({ items }: { items: { label: string; color: string }[] }) {
   return (
     <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
       {items.map(({ label, color }) => (
@@ -60,6 +66,16 @@ export function LegendRow({ items }: { items: { label: string; color: string }[]
 
 type TipPayload = { name?: string | number; value?: number | string; color?: string }[];
 
+/** Shared tooltip chrome — used by the chart tooltips AND the mode strip's,
+ * so the two can't drift apart visually. */
+export function TooltipPanel({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-edge bg-card px-3 py-2 text-xs shadow-sm">
+      {children}
+    </div>
+  );
+}
+
 function ChartTip({
   active,
   payload,
@@ -73,7 +89,7 @@ function ChartTip({
 }) {
   if (!active || !payload?.length || typeof label !== "number") return null;
   return (
-    <div className="rounded-lg border border-edge bg-card px-3 py-2 text-xs shadow-sm">
+    <TooltipPanel>
       <div className="mb-1 font-semibold">{fmtDayTime(label)}</div>
       {payload.map((p) =>
         typeof p.value === "number" && typeof p.name === "string" ? (
@@ -84,7 +100,7 @@ function ChartTip({
           </div>
         ) : null,
       )}
-    </div>
+    </TooltipPanel>
   );
 }
 
@@ -152,7 +168,7 @@ export function HemChart({
         <Tooltip
           content={<ChartTip format={format} />}
           isAnimationActive={false}
-          cursor={{ stroke: dark ? "#6e6e78" : "#90909a", strokeDasharray: "4 3" }}
+          cursor={{ stroke: cursorStroke(dark), strokeDasharray: "4 3" }}
         />
         {children}
       </ComposedChart>
