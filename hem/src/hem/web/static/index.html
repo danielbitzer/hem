@@ -23,6 +23,7 @@
           padding: 10px 16px; min-width: 130px; }
   .tile .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
   .tile .v { font-size: 20px; font-weight: 600; margin-top: 2px; }
+  .tile .s { color: var(--muted); font-size: 11px; margin-top: 2px; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
           padding: 12px; margin-bottom: 14px; }
   .card h2 { font-size: 13px; margin: 0 0 4px; color: var(--muted); font-weight: 600; }
@@ -43,6 +44,8 @@
 <div id="warning"></div>
 <div class="tiles" id="tiles" style="display:none">
   <div class="tile"><div class="k">Action now</div><div class="v" id="t-action">–</div></div>
+  <div class="tile"><div class="k">Amber buy / sell</div><div class="v" id="t-price">–</div>
+    <div class="s" id="t-price-period"></div></div>
   <div class="tile"><div class="k">Battery setpoint</div><div class="v" id="t-power">–</div></div>
   <div class="tile"><div class="k">SoC target</div><div class="v" id="t-soc">–</div></div>
   <div class="tile"><div class="k">Horizon cost</div><div class="v" id="t-cost">–</div></div>
@@ -160,6 +163,14 @@ async function refresh() {
   const actionEl = document.querySelector("#t-action");
   actionEl.textContent = step0.action;
   actionEl.className = "v action-" + step0.action;
+  // the live prices the current action was optimized against ($/kWh, same
+  // convention as the price chart), and the interval they apply to
+  document.querySelector("#t-price").textContent =
+    "$" + step0.buy.toFixed(3) + " / $" + step0.sell.toFixed(3);
+  const fmtHm = (d) => new Date(d).toLocaleTimeString(undefined,
+    { hour: "2-digit", minute: "2-digit" });
+  document.querySelector("#t-price-period").textContent =
+    fmtHm(step0.start) + " – " + fmtHm(step0.end);
   // only forced charge/discharge carry a real commanded setpoint; every other
   // mode runs under self-consumption, so a kW figure would be fiction
   document.querySelector("#t-power").textContent =
