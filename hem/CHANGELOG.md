@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.8
 
 - **Below-reserve SoC is no longer clamped up to `soc_min`**: the plan starts
   from the actual SoC (phantom energy was invented when a BMS recalibration
