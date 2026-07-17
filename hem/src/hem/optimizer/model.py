@@ -134,8 +134,15 @@ def solve(
     # Keep sell strictly below buy so simultaneous import+export is never
     # optimal (true for Amber anyway; guards degenerate LP directions).
     sell = np.minimum(inputs.sell, buy - SELL_BUY_MARGIN)
-    # A SoC sensor glitch outside bounds must not make the problem infeasible.
-    soc0 = float(np.clip(inputs.soc0_kwh, battery.soc_min_kwh, battery.soc_max_kwh))
+    # Start from the ACTUAL SoC, even below soc_min — clamping it up to the
+    # floor invents energy that isn't there (seen live: a BMS recalibration
+    # dropped the real SoC below the planning reserve and the plan kept
+    # spending the phantom 4+ kWh). The hard floor relaxes to the actual
+    # start, so a below-reserve battery can never be discharged further and
+    # recovers above soc_min when prices make charging worthwhile. Clip only
+    # to the physical [0, soc_max] against sensor glitches.
+    soc0 = float(np.clip(inputs.soc0_kwh, 0.0, battery.soc_max_kwh))
+    soc_floor = min(battery.soc_min_kwh, soc0)
 
     pc = cp.Variable(T, nonneg=True)
     pd = cp.Variable(T, nonneg=True)
@@ -152,7 +159,7 @@ def solve(
         soc[1:]
         == soc[:-1]
         + cp.multiply(battery.efficiency_charge * pc - pd / battery.efficiency_discharge, dt),
-        soc >= battery.soc_min_kwh,
+        soc >= soc_floor,
         soc <= battery.soc_max_kwh,
         pc <= battery.max_charge_kw * y,
         pd

@@ -264,3 +264,25 @@ def test_pin_no_charge_blocks_charging_allows_discharge():
     sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.05), pin_step0="no_charge")
     assert float(sol.charge_kw[0]) == pytest.approx(0.0, abs=1e-6)  # no charging
     assert float(sol.discharge_kw[0]) > 0.0  # serving load is still allowed
+
+
+def test_soc_below_floor_starts_honest_and_recovers():
+    """A real SoC below soc_min (BMS recalibration, overnight self-consumption
+    drain) must not be clamped up to the floor: that invents phantom energy the
+    plan then spends. The plan starts from the actual SoC, never discharges
+    below it, and charges back above the floor when prices favor it.
+    """
+    buy = np.full(24, 0.30)
+    buy[4:8] = 0.05  # a cheap window to recover in
+    inputs = make_inputs(buy=buy, sell=0.02, load=0.5, soc0=0.6)  # floor is 1.28
+    sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.25))
+    assert sol.soc_kwh[0] == pytest.approx(0.6)  # honest start, not 1.28
+    assert float(np.min(sol.soc_kwh)) >= 0.6 - 1e-6  # never digs deeper
+    assert float(np.min(sol.discharge_kw[:4])) == pytest.approx(0.0, abs=1e-6)
+    assert float(sol.soc_kwh[-1]) >= BATTERY.soc_min_kwh  # recovered above floor
+
+
+def test_soc_glitch_above_capacity_still_clamped():
+    inputs = make_inputs(soc0=99.0)  # sensor glitch beyond physical capacity
+    sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.05))
+    assert sol.soc_kwh[0] == pytest.approx(BATTERY.soc_max_kwh)

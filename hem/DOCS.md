@@ -33,6 +33,17 @@ against every discharged kWh in the objective — a reasonable starting point is
 replacement cost divided by total lifetime throughput (e.g. $6000 / 38 MWh ≈ $0.16, or
 much lower if you expect the battery to outlive its warranty).
 
+`soc_min` is **HEM's planning reserve, not the inverter's minimum SoC** — set
+it above the inverter's own floor as insurance against forecast error. HEM's
+deliberate moves (forced discharge/export) respect it: every 5-minute
+re-solve reads the real SoC and stops discharging at the reserve. What it
+cannot stop is the inverter's self-consumption mode serving *house load*
+below it during `idle` — that drains to the inverter's own minimum, which is
+what the reserve is insurance for. If the battery is found below `soc_min`
+(overnight load, a BMS recalibration), the plan starts from the real SoC,
+never discharges it further, and charges back above the reserve when prices
+make that worthwhile.
+
 ### `grid`
 
 Limits of your **grid connection**, distinct from the battery's power limits:

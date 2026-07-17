@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Below-reserve SoC is no longer clamped up to `soc_min`**: the plan starts
+  from the actual SoC (phantom energy was invented when a BMS recalibration
+  or overnight self-consumption load left the battery under the reserve),
+  never discharges below the real level, and recovers above the reserve when
+  prices favor charging. DOCS now spells out `soc_min` as HEM's planning
+  reserve vs the inverter's own minimum.
+
 ## 0.1.7
 
 - Dashboard: "Amber buy / sell" tile — the live prices the current action was
