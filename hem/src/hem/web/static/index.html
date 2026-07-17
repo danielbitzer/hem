@@ -166,7 +166,7 @@ async function refresh() {
   // the live prices the current action was optimized against ($/kWh, same
   // convention as the price chart), and the interval they apply to
   document.querySelector("#t-price").textContent =
-    "$" + step0.buy.toFixed(3) + " / $" + step0.sell.toFixed(3);
+    "$" + step0.buy.toFixed(2) + " / $" + step0.sell.toFixed(2);
   const fmtHm = (d) => new Date(d).toLocaleTimeString(undefined,
     { hour: "2-digit", minute: "2-digit" });
   document.querySelector("#t-price-period").textContent =
