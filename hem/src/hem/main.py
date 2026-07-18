@@ -287,6 +287,8 @@ async def run() -> None:
                             async with asyncio.timeout(CYCLE_SECONDS):
                                 await controller.changed.wait()
                         continue
+                    if app_state.lifecycle != "running":
+                        app_state.health.restart_grace()
                     app_state.lifecycle = "running"
                     await _run_planner(settings, client, publisher, tz, app_state, controller)
                     log.info("configuration changed; applying")

@@ -98,7 +98,7 @@ self-consumption when HEM's heartbeat goes stale. See
 | Optimization | [CVXPY](https://www.cvxpy.org/) (`cvxpy-base`) + [HiGHS](https://highs.dev/) (`highspy`) — ~70 binaries/solve, tens of ms |
 | Numerics | numpy (no pandas; the time-grid resampler is ~50 lines) |
 | HA I/O | aiohttp — REST for states/publishing, WebSocket for event-triggered re-solves |
-| Config | pydantic + pydantic-settings (add-on options JSON / `HEM_*` env) |
+| Config | pydantic + pydantic-settings — edited in the web UI's Settings view, persisted to a HEM-owned `hem-config.json` (`HEM_*` env for connection/dev) |
 | Dashboard | React 19 (+ React Compiler) + Recharts + Tailwind, built with Vite/Bun into a fully offline bundle; served by FastAPI + uvicorn behind HA ingress |
 | Packaging | uv-locked deps; Debian-based image (cvxpy has no musl wheels); multi-arch (amd64/aarch64) prebuilt via GitHub Actions → GHCR |
 
@@ -131,5 +131,10 @@ uv run python -m hem
 or via Docker, from the **repo root**: `docker compose -f docker-compose.dev.yml up --build`
 (reads `HEM_HA_URL`/`HEM_HA_TOKEN` from your shell environment or a repo-root
 `.env`; note the standalone run above uses `hem/.env` instead).
+
+Configure via the web UI at `http://localhost:8099` (Settings). Note the dev
+server has **no authentication** — anyone on your LAN who can reach :8099 can
+read and edit the config. Under the Supervisor this doesn't apply (ingress
+only, HA-session-authenticated, no host port).
 
 Tests: `cd hem && uv run pytest`

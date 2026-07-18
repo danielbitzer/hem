@@ -33,7 +33,10 @@ DEV_CONFIG_FALLBACK = "hem-config.json"
 def resolve_config_path(explicit: Path | None = None) -> Path:
     if explicit:
         return explicit
-    if Path("/data").is_dir():
+    # Gate on the Supervisor token, not on /data existing — any Linux box can
+    # have a /data directory, and silently writing there (or failing on its
+    # permissions) is a confusing dev experience.
+    if os.environ.get("SUPERVISOR_TOKEN") and Path("/data").is_dir():
         return Path(SUPERVISOR_CONFIG_FILE)
     return Path(DEV_CONFIG_FALLBACK)
 
@@ -53,6 +56,16 @@ class ConfigStore:
         except (OSError, ValueError) as e:
             log.error("config %s unreadable (%s); starting unconfigured", self.path, e)
             return None
+        if not isinstance(raw, dict):
+            log.error("config %s is not a JSON object; starting unconfigured", self.path)
+            return None
+        if raw.get("schema_version", SCHEMA_VERSION) != SCHEMA_VERSION:
+            log.warning(
+                "config %s has schema_version %r (this build writes %r); attempting to read",
+                self.path,
+                raw.get("schema_version"),
+                SCHEMA_VERSION,
+            )
         try:
             return Settings.model_validate(raw.get("config") or {})
         except ValidationError as e:
@@ -65,9 +78,16 @@ class ConfigStore:
             "config": settings.model_dump(mode="json"),
         }
         tmp = self.path.with_name(self.path.name + ".tmp")
-        tmp.write_text(json.dumps(doc, indent=2) + "\n")
+        with open(tmp, "w") as f:
+            f.write(json.dumps(doc, indent=2) + "\n")
+            f.flush()
+            os.fsync(f.fileno())  # this file is the only copy of the config
+        bak = self.path.with_name(self.path.name + ".bak")
         if self.path.exists():
-            os.replace(self.path, self.path.with_name(self.path.name + ".bak"))
+            # Hardlink (not rename) the previous version to .bak so the live
+            # path is never absent — a crash here still leaves the old config.
+            bak.unlink(missing_ok=True)
+            os.link(self.path, bak)
         os.replace(tmp, self.path)
 
 

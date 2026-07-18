@@ -4,6 +4,7 @@ services:
     environment:
       HEM_HA_URL: ${HEM_HA_URL:-http://homeassistant.local:8123}
       HEM_HA_TOKEN: ${HEM_HA_TOKEN:?set in .env or environment}
+      HEM_CONFIG_FILE: /data/hem-config.json
       HEM_LOG_LEVEL: ${HEM_LOG_LEVEL:-debug}
     volumes:
       # /data mirrors the Supervisor layout; hem-config.json is created and

@@ -62,10 +62,25 @@ def test_store_roundtrip_and_backup(tmp_path: Path):
 
 def test_store_corrupt_file_is_unconfigured_not_fatal(tmp_path: Path):
     path = tmp_path / "hem-config.json"
-    path.write_text("{not json")
-    assert ConfigStore(path).load() is None
-    path.write_text(json.dumps({"schema_version": 1, "config": {"battery": {}}}))
-    assert ConfigStore(path).load() is None  # invalid settings, same story
+    for content in (
+        "{not json",
+        json.dumps({"schema_version": 1, "config": {"battery": {}}}),  # invalid settings
+        json.dumps([1, 2, 3]),  # valid JSON, not an object
+        json.dumps("hello"),
+    ):
+        path.write_text(content)
+        assert ConfigStore(path).load() is None
+
+
+def test_store_save_never_leaves_the_live_path_absent(tmp_path: Path):
+    # .bak is a hardlink of the previous version, not a rename — a crash
+    # mid-save must still leave hem-config.json in place
+    store = ConfigStore(tmp_path / "hem-config.json")
+    store.save(make_settings(enabled=True))
+    store.save(make_settings(enabled=False))
+    assert store.path.exists()
+    assert json.loads((tmp_path / "hem-config.json.bak").read_text())["config"]["enabled"] is True
+    assert store.load().enabled is False
 
 
 def test_unknown_keys_ignored():
@@ -79,12 +94,23 @@ def env_settings(**kwargs) -> EnvSettings:
     return EnvSettings(_env_file=None, **kwargs)  # hermetic: ignore any real .env
 
 
-def test_log_level_env_wins(monkeypatch: pytest.MonkeyPatch):
+def test_log_level_env_wins():
     assert resolve_log_level(env_settings(log_level="debug")) == "debug"
 
 
-def test_log_level_defaults_to_info_without_options_file():
+def test_log_level_defaults_to_info_without_options_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # hermetic: never read a real /data/options.json on the machine running tests
+    monkeypatch.setattr("hem.config.DEFAULT_OPTIONS_FILE", str(tmp_path / "options.json"))
     assert resolve_log_level(env_settings()) == "info"
+
+
+def test_log_level_from_supervisor_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    opts = tmp_path / "options.json"
+    opts.write_text(json.dumps({"log_level": "warning"}))
+    monkeypatch.setattr("hem.config.DEFAULT_OPTIONS_FILE", str(opts))
+    assert resolve_log_level(env_settings()) == "warning"
 
 
 def test_connection_supervisor():

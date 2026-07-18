@@ -47,6 +47,15 @@ class HealthState:
     def mark_error(self, error: str) -> None:
         self.last_error = error
 
+    def restart_grace(self) -> None:
+        """Re-arm the startup grace period. Called when planning (re)starts
+        after a disabled/unconfigured stretch: last_success is stale from
+        before the pause, and without a fresh window the watchdog would see
+        503 — and restart the add-on — the moment the user enables HEM."""
+        self.started_at = datetime.now(UTC)
+        self.last_success = None
+        self.last_error = ""
+
     @property
     def healthy(self) -> bool:
         # Grace period after startup so the watchdog doesn't kill us before the
@@ -143,12 +152,18 @@ def create_app(
 
         @app.put("/api/config")
         async def put_config(request: Request) -> JSONResponse:
-            body = await request.json()
+            try:
+                body = await request.json()
+            except ValueError:
+                return JSONResponse({"error": "request body is not valid JSON"}, 400)
             try:
                 settings = Settings.model_validate(body)
             except ValidationError as e:
                 return JSONResponse({"errors": _validation_errors(e)}, status_code=422)
-            controller.apply(settings)
+            try:
+                controller.apply(settings)
+            except OSError as e:
+                return JSONResponse({"error": f"could not write the config file: {e}"}, 500)
             return JSONResponse({"ok": True, "config": settings.model_dump(mode="json")})
 
     if client is not None:

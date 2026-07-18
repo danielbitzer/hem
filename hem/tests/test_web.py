@@ -88,6 +88,16 @@ def test_health_stays_healthy_while_disabled(tmp_path):
     assert body.json()["lifecycle"] == "unconfigured"
 
 
+def test_health_grace_rearms_when_planning_resumes():
+    # sat disabled for ages, then enabled: without re-arming the grace window
+    # the watchdog would see 503 (stale last_success) the moment HEM starts
+    state = AppState(lifecycle="disabled")
+    state.health.started_at = datetime(2025, 7, 1, tzinfo=UTC)
+    state.health.restart_grace()
+    state.lifecycle = "running"
+    assert TestClient(create_app(state)).get("/health").status_code == 200
+
+
 def test_get_config_unconfigured(tmp_path):
     client = TestClient(create_app(AppState(), make_controller(tmp_path)))
     body = client.get("/api/config").json()

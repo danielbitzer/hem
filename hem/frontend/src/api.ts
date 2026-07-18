@@ -157,7 +157,10 @@ export async function putConfig(doc: ConfigDoc): Promise<void> {
     const body = (await resp.json()) as { errors: FieldError[] };
     throw new ConfigValidationError(body.errors);
   }
-  if (!resp.ok) throw new Error(`config save failed: ${resp.statusText}`);
+  if (!resp.ok) {
+    const detail = ((await resp.json().catch(() => ({}))) as { error?: string }).error;
+    throw new Error(detail ?? `config save failed: ${resp.statusText}`);
+  }
 }
 
 export async function fetchEntities(): Promise<Entity[]> {

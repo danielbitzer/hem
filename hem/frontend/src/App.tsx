@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type ConfigResponse, fetchConfig, fetchPlanOrExplain, type PlanResponse } from "./api";
 import { BatteryChart, ForecastChart, PricesChart, type Row, SocChart } from "./charts";
 import { Button } from "./components/ui/button";
@@ -13,11 +13,22 @@ type View = "dashboard" | "settings";
 
 export function App() {
   const [chosenView, setChosenView] = useState<View | null>(null);
-  const config = useQuery({ queryKey: ["config"], queryFn: fetchConfig });
-  // A fresh install lands straight in Settings; once the user navigates,
-  // their choice wins.
-  const view: View =
-    chosenView ?? (config.data && !config.data.configured ? "settings" : "dashboard");
+  // Polled so the lifecycle banner clears when the main loop flips to
+  // running shortly after an enable (the save-triggered refetch can race it).
+  const config = useQuery({
+    queryKey: ["config"],
+    queryFn: fetchConfig,
+    refetchInterval: 30_000,
+  });
+  // A fresh install lands (and STAYS — hence pinning it as the chosen view,
+  // or the first successful save would yank the user to the dashboard) in
+  // Settings; once the user navigates, their choice wins.
+  useEffect(() => {
+    if (chosenView === null && config.data && !config.data.configured) {
+      setChosenView("settings");
+    }
+  }, [chosenView, config.data]);
+  const view: View = chosenView ?? "dashboard";
 
   return (
     <div>

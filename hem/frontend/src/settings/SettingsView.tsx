@@ -141,6 +141,11 @@ function SettingsForm({ initialConfig }: { initialConfig: Record<string, unknown
   return (
     <form
       className="mx-auto max-w-3xl space-y-4"
+      // The server (pydantic) is the validation authority — native browser
+      // validation would reject values it accepts (e.g. step mismatches like
+      // a 0.12 daily target against step=0.05) with a bubble instead of our
+      // error UI. min/max/step stay on the inputs as spinner hints only.
+      noValidate
       onSubmit={(e) => {
         e.preventDefault();
         void form.handleSubmit();

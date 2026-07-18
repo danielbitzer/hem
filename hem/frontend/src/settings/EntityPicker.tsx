@@ -58,7 +58,7 @@ export function EntityPicker({ value, onChange, entities, domains, optional, inv
           <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] min-w-72 p-0" align="start">
+      <PopoverContent className="w-(--radix-popover-trigger-width) min-w-72 p-0" align="start">
         <Command>
           <CommandInput
             placeholder={`Search ${domains.join(", ")}…`}
@@ -66,20 +66,15 @@ export function EntityPicker({ value, onChange, entities, domains, optional, inv
             onValueChange={setSearch}
           />
           <CommandList>
-            <CommandEmpty>
-              {search ? (
-                <button
-                  type="button"
-                  className="cursor-pointer underline underline-offset-2"
-                  onClick={() => pick(search)}
-                >
-                  Use “{search}” as typed
-                </button>
-              ) : (
-                "No matching entities."
-              )}
-            </CommandEmpty>
+            <CommandEmpty>No matching entities.</CommandEmpty>
             <CommandGroup>
+              {search && !candidates.some((e) => e.entity_id === search) && (
+                // forceMount: always reachable — cmdk's fuzzy filter would
+                // otherwise hide this whenever the search matches anything
+                <CommandItem forceMount value="__typed__" onSelect={() => pick(search)}>
+                  Use “{search}” as typed
+                </CommandItem>
+              )}
               {optional && (
                 <CommandItem value="__none__" onSelect={() => pick("")}>
                   <span className="text-muted-foreground">(not used)</span>
