@@ -6,6 +6,7 @@ Formulation (see IMPLEMENTATION_PLAN.md §3):
        + wear · Σ pd·Δt                      battery wear on discharge
        + ε · Σ (pc + pd)·Δt                  anti-chatter tiebreak
        + reserve_penalty · Σ slack·Δt        soft spike-reserve violations
+       + target_penalty · Σ tslack           soft daily-SoC-target shortfall
        − v_T · soc[T]                        terminal SoC value
 
     s.t. pv_u + pd + gi == load + pc + ge    power balance per step
@@ -14,6 +15,7 @@ Formulation (see IMPLEMENTATION_PLAN.md §3):
          soc bounds; pc ≤ Pc·y; pd ≤ Pd·(1−y)   no simultaneous charge+discharge
          gi ≤ Gi; ge ≤ Ge
          soc[t] ≥ reserve[t] − slack[t]      soft floor (spike readiness)
+         soc[k] ≥ target[k] − tslack[k]      soft instants (daily full-charge)
          optional: pc ≤ pv_u                 (allow_grid_charge=false)
 
 Grid shape varies per cycle (data-driven), so the problem is rebuilt each
@@ -70,6 +72,11 @@ class OptimizerInputs:
     # Per-step discharge cap override (kW); None -> battery.max_discharge_kw
     # everywhere. Used to raise the cap during a confirmed spike interval.
     max_discharge_kw_step: np.ndarray | None = None
+    # Soft INSTANTANEOUS SoC targets, length T+1 aligned with soc[]; 0 =
+    # inactive. Used for the daily full-charge insurance target: unlike the
+    # reserve (a floor over a window), this binds at single instants — the
+    # battery is free to discharge hard right after each target.
+    soc_target_kwh: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -79,6 +86,9 @@ class OptimizerConfig:
     # the reserve floor, so persistent violations cost more than momentary ones.
     reserve_penalty_per_kwh: float
     solver_timeout_s: float
+    # $/kWh charged ONCE per missing kWh at each soc_target_kwh instant — the
+    # explicit insurance premium for not being full at the daily target.
+    soc_target_penalty_per_kwh: float = 0.0
 
 
 @dataclass
@@ -193,6 +203,16 @@ def solve(
         + EPSILON_CHATTER * cp.sum(cp.multiply(pc + pd, dt))
         - config.terminal_value * soc[T]
     )
+    if (
+        inputs.soc_target_kwh is not None
+        and np.any(inputs.soc_target_kwh > 0)
+        and config.soc_target_penalty_per_kwh > 0
+    ):
+        # One-shot penalty per instant (no dt weighting): being short at the
+        # target moment is the insured event, however long the steps around it.
+        target_slack = cp.Variable(T + 1, nonneg=True)
+        constraints.append(soc >= inputs.soc_target_kwh - target_slack)
+        cost = cost + config.soc_target_penalty_per_kwh * cp.sum(target_slack)
     if inputs.reserve_kwh is not None and np.any(inputs.reserve_kwh > 0):
         slack = cp.Variable(T, nonneg=True)
         constraints.append(soc[1:] >= inputs.reserve_kwh - slack)

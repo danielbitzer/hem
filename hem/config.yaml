@@ -36,6 +36,9 @@ options:
     wear_cost_per_kwh: 0.08
     allow_grid_charge: true
     power_convention: charge_negative
+    daily_target_soc: 0.0
+    daily_target_hour: 15
+    daily_target_penalty_per_kwh: 0.1
   grid:
     import_limit_kw: 15.0
     export_limit_kw: 5.0
@@ -75,6 +78,9 @@ schema:
     wear_cost_per_kwh: float(0,10)
     allow_grid_charge: bool
     power_convention: list(charge_positive|charge_negative)
+    daily_target_soc: float(0,1)?
+    daily_target_hour: int(0,23)?
+    daily_target_penalty_per_kwh: float(0,10)?
   grid:
     import_limit_kw: float(0.1,1000)
     export_limit_kw: float(0,1000)
