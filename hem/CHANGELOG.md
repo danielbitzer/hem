@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.9
 
 - **Soft daily SoC target** (`battery.daily_target_soc`, off by default):
   softly requires the battery at a target SoC by a local hour each day
