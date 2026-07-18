@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Soft daily SoC target** (`battery.daily_target_soc`, off by default):
+  softly requires the battery at a target SoC by a local hour each day
+  (default 3pm), paying at most `daily_target_penalty_per_kwh` ($0.10) per
+  missing kWh. Prices the insurance value of a full battery against
+  unforecast spikes and surprise load, which the pure forecast economics
+  assign zero worth — on mild days the optimizer would otherwise stop at
+  "enough for the forecast". Binds at an instant, not a floor: the battery
+  still discharges freely into the evening peak.
+
 ## 0.1.8
 
 - **Below-reserve SoC is no longer clamped up to `soc_min`**: the plan starts

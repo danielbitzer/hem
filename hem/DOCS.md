@@ -33,6 +33,19 @@ against every discharged kWh in the objective — a reasonable starting point is
 replacement cost divided by total lifetime throughput (e.g. $6000 / 38 MWh ≈ $0.16, or
 much lower if you expect the battery to outlive its warranty).
 
+**Daily full-charge insurance** (`daily_target_soc`, default 0 = off): a
+rational optimizer only charges enough for the *forecast* — unforecast spikes
+and surprise usage are worth nothing to it, so on a mild day it may stop at
+50%. Setting `daily_target_soc` (e.g. `1.0`) softly requires that SoC at
+`daily_target_hour` local time (default 15, i.e. 3pm — before the evening
+ramp) each day. Soft means: the plan pays up to
+`daily_target_penalty_per_kwh` (default $0.10) per missing kWh — your
+explicit insurance premium. Filling via forgone feed-in or a cheap grid
+window (usually well under 10c/kWh of cost) happens; sacrificing a genuinely
+better opportunity, like exporting into a real spike, does not. The target
+binds at an instant, not as a floor, so the battery discharges freely into
+the evening peak right after it.
+
 `soc_min` is **HEM's planning reserve, not the inverter's minimum SoC** — set
 it above the inverter's own floor as insurance against forecast error. HEM's
 deliberate moves (forced discharge/export) respect it: every 5-minute

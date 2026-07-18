@@ -16,6 +16,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from datetime import time as dt_time
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -79,6 +80,38 @@ def spike_reserve_vector(
     return reserve
 
 
+def daily_soc_target_vector(
+    grid: TimeGrid,
+    tz: ZoneInfo,
+    *,
+    target_soc: float,
+    target_hour: int,
+    capacity_kwh: float,
+) -> np.ndarray | None:
+    """Soft instantaneous SoC targets (length T+1, aligned with soc[]): at
+    each local `target_hour` inside the horizon, require target_soc×capacity.
+
+    The daily full-charge insurance: unforecast spikes and surprise load have
+    zero value in the objective, so the pure economics stop charging at
+    "enough for the forecast" — this prices being full going into each
+    evening. Instants strictly after `now` only (soc[0] is fixed; penalizing
+    it would just add a constant).
+    """
+    if target_soc <= 0:
+        return None
+    times = [s.start for s in grid.steps] + [grid.steps[-1].end]
+    target = np.zeros(len(times))
+    day = times[0].astimezone(tz).date()
+    last_day = times[-1].astimezone(tz).date()
+    while day <= last_day:
+        instant = datetime.combine(day, dt_time(hour=target_hour), tzinfo=tz)
+        if times[0] < instant <= times[-1]:
+            k = next(i for i, t in enumerate(times) if t >= instant)
+            target[k] = target_soc * capacity_kwh
+        day += timedelta(days=1)
+    return target if np.any(target > 0) else None
+
+
 def discharge_cap_vector(
     steps: int, live_spike: bool, spike_discharge_kw: float, max_discharge_kw: float
 ) -> np.ndarray | None:
@@ -125,6 +158,7 @@ class Planner:
         self._solar = solar
         self._battery = battery
         self._weather = weather
+        self._tz = tz
         self._load_forecaster = load_forecaster
         self._battery_params = battery_params(settings)
         self._grid_params = GridParams(
@@ -198,6 +232,13 @@ class Planner:
             soc0_kwh=battery.soc_frac * self._battery_params.capacity_kwh,
             reserve_kwh=self._spike_reserve(sell_raw, grid, now, prices),
             max_discharge_kw_step=self._discharge_caps(len(grid), prices.live_spike),
+            soc_target_kwh=daily_soc_target_vector(
+                grid,
+                self._tz,
+                target_soc=self._settings.battery.daily_target_soc,
+                target_hour=self._settings.battery.daily_target_hour,
+                capacity_kwh=self._battery_params.capacity_kwh,
+            ),
         )
         cov = {
             "buy": round(coverage(prices.buy, grid), 3),
@@ -279,6 +320,7 @@ class Planner:
             terminal_value=terminal,
             reserve_penalty_per_kwh=self._settings.spike.reserve_penalty_per_kwh,
             solver_timeout_s=cfg.solver_timeout_s,
+            soc_target_penalty_per_kwh=self._settings.battery.daily_target_penalty_per_kwh,
         )
         solution = solve(data.inputs, self._battery_params, self._grid_params, opt_config)
         solution = self._apply_hysteresis(solution, data, opt_config)

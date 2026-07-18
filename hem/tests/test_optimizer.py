@@ -35,6 +35,7 @@ def make_inputs(
     load: float | np.ndarray = 0.5,
     soc0: float = 6.4,
     reserve: np.ndarray | None = None,
+    soc_target: np.ndarray | None = None,
 ) -> OptimizerInputs:
     def full(v) -> np.ndarray:
         return np.full(T, float(v)) if np.isscalar(v) else np.asarray(v, dtype=float)
@@ -47,14 +48,18 @@ def make_inputs(
         load=full(load),
         soc0_kwh=soc0,
         reserve_kwh=reserve,
+        soc_target_kwh=soc_target,
     )
 
 
-def config(terminal_value: float, reserve_penalty: float = 0.5) -> OptimizerConfig:
+def config(
+    terminal_value: float, reserve_penalty: float = 0.5, target_penalty: float = 0.0
+) -> OptimizerConfig:
     return OptimizerConfig(
         terminal_value=terminal_value,
         reserve_penalty_per_kwh=reserve_penalty,
         solver_timeout_s=30,
+        soc_target_penalty_per_kwh=target_penalty,
     )
 
 
@@ -299,3 +304,44 @@ def test_empty_battery_flat_prices_serves_load_by_import_not_charging():
     sol = solve(inputs, BATTERY, GRID, config(terminal_value=terminal))
     assert sol.charge_kw.max() < 0.01  # never charges just to re-serve load
     assert float(np.min(sol.grid_import_kw)) >= 1.5 - 1e-6  # load fed directly
+
+
+def _target_at(T: int, index: int, kwh: float) -> np.ndarray:
+    target = np.zeros(T + 1)
+    target[index] = kwh
+    return target
+
+
+def test_daily_target_fills_in_cheap_window():
+    """The soft daily target pulls a full charge through a cheap window that
+    pure economics would ignore (sell 0, terminal 0: stored energy is
+    worthless in-model — exactly the unforecast-spike insurance case)."""
+    buy = np.full(12, 0.30)
+    buy[1:8] = 0.05  # cheap window (long enough to fill at max charge power)
+    free = make_inputs(T=12, buy=buy, sell=0.0, load=0.0, soc0=2.0)
+    sol_free = solve(free, BATTERY, GRID, config(terminal_value=0.0))
+    assert sol_free.charge_kw.max() < 0.01  # control: no reason to charge
+
+    inputs = make_inputs(
+        T=12, buy=buy, sell=0.0, load=0.0, soc0=2.0,
+        soc_target=_target_at(12, 8, BATTERY.soc_max_kwh),
+    )
+    sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.0, target_penalty=0.10))
+    assert sol.soc_kwh[8] == pytest.approx(BATTERY.soc_max_kwh, abs=1e-3)
+    # the fill happened inside the cheap window, not at 0.30
+    assert float(sol.charge_kw[0]) < 0.01
+    # and the target is an instant, not a floor: free to discharge after it
+    # (nothing to discharge INTO here with sell=0, so just assert no new floor)
+    assert float(sol.soc_kwh[-1]) <= BATTERY.soc_max_kwh
+
+
+def test_daily_target_yields_when_filling_costs_more_than_the_premium():
+    """Soft, not dumb: at buy 0.40 the marginal fill costs ~0.42/kWh; with a
+    0.10 premium the plan takes the slack instead of overpaying."""
+    inputs = make_inputs(
+        T=12, buy=0.40, sell=0.0, load=0.0, soc0=2.0,
+        soc_target=_target_at(12, 8, BATTERY.soc_max_kwh),
+    )
+    sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.0, target_penalty=0.10))
+    assert sol.charge_kw.max() < 0.01  # refused to fill at a loss
+    assert sol.soc_kwh[8] == pytest.approx(2.0, abs=1e-3)

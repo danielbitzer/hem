@@ -344,3 +344,55 @@ def test_fallback_shifts_previous_plan():
     fallback = planner.fallback(NOW)
     assert fallback.solver_status.startswith("stale")
     assert all(iv.end > NOW for iv in fallback.intervals)
+
+
+def test_daily_soc_target_vector_maps_local_hour_across_days():
+    from hem.planner import daily_soc_target_vector
+    from hem.timegrid import TimeGrid
+
+    # 00:00 UTC = 09:30 in Adelaide; 15:00 local = 05:30 UTC (+5.5h, index 11
+    # on a 30-min grid), and again next day at +29.5h (index 59).
+    now = datetime(2026, 7, 18, 0, 0, tzinfo=UTC)
+    boundaries = [now + timedelta(minutes=30 * i) for i in range(80)]
+    grid = TimeGrid.build(now, boundaries, timedelta(hours=36))
+    target = daily_soc_target_vector(
+        grid, ADELAIDE, target_soc=1.0, target_hour=15, capacity_kwh=44.8
+    )
+    assert target is not None and len(target) == len(grid) + 1
+    hits = np.nonzero(target)[0]
+    assert list(hits) == [11, 59]
+    assert target[11] == pytest.approx(44.8)
+
+    # target hour already past for today -> only tomorrow's instant remains
+    later = datetime(2026, 7, 18, 6, 0, tzinfo=UTC)  # 15:30 Adelaide
+    boundaries2 = [later + timedelta(minutes=30 * i) for i in range(80)]
+    grid2 = TimeGrid.build(later, boundaries2, timedelta(hours=36))
+    target2 = daily_soc_target_vector(
+        grid2, ADELAIDE, target_soc=1.0, target_hour=15, capacity_kwh=44.8
+    )
+    assert target2 is not None
+    assert len(np.nonzero(target2)[0]) == 1  # tomorrow only
+
+    # disabled
+    assert (
+        daily_soc_target_vector(grid, ADELAIDE, target_soc=0.0, target_hour=15, capacity_kwh=44.8)
+        is None
+    )
+
+
+async def test_daily_target_wired_into_inputs():
+    settings = make_settings(
+        battery={
+            "capacity_kwh": 12.8,
+            "max_charge_kw": 5.0,
+            "max_discharge_kw": 5.0,
+            "daily_target_soc": 1.0,
+        }
+    )
+    fake = full_fake_ha()
+    async with fake_ha_client(fake) as client:
+        planner = make_planner(client, settings)
+        data = await planner.gather(NOW)
+    target = data.inputs.soc_target_kwh
+    assert target is not None
+    assert float(np.max(target)) == pytest.approx(12.8)

@@ -106,6 +106,14 @@ class Battery(BaseModel):
     # charge_negative is the default; HEM's internal convention is positive =
     # charging. Set charge_positive if your sensor reads the other way.
     power_convention: Literal["charge_positive", "charge_negative"] = "charge_negative"
+    # Daily full-charge insurance: softly require SoC >= daily_target_soc at
+    # daily_target_hour (local) each day. The penalty is the premium you'll
+    # pay per missing kWh — high enough to beat forgone feed-in on a normal
+    # day, low enough that a genuinely better opportunity (a real spike)
+    # still outbids it. 0 disables.
+    daily_target_soc: float = Field(default=0.0, ge=0, le=1)
+    daily_target_hour: int = Field(default=15, ge=0, le=23)
+    daily_target_penalty_per_kwh: float = Field(default=0.10, ge=0)
 
     @model_validator(mode="after")
     def _soc_bounds_ordered(self) -> Self:
