@@ -208,7 +208,10 @@ export function PricesChart({
             label={{
               value: "forecast padded",
               angle: -90,
-              position: "insideTopLeft",
+              // insideLeft centers the rotated text vertically in the band;
+              // insideTopLeft anchored it half above the plot area (clipped)
+              position: "insideLeft",
+              offset: 12,
               fontSize: 10,
               fill: dark ? "#9a9aa2" : "#6e6e73",
             }}

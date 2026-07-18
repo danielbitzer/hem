@@ -24,7 +24,7 @@ export const SERIES = {
 // knows GUTTER and RIGHT_MARGIN, so CHART_MARGIN.left MUST stay 0 and the
 // YAxis width MUST stay GUTTER — a Recharts plot's left edge is
 // margin.left + axis width, and the strip would silently drift otherwise.
-export const GUTTER = 56;
+export const GUTTER = 28;
 export const RIGHT_MARGIN = 16;
 export const CHART_MARGIN = { top: 8, right: RIGHT_MARGIN, bottom: 0, left: 0 };
 
