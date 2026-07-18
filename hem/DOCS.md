@@ -128,6 +128,15 @@ history overlap, so a newly added temperature sensor shortens the effective
 learning window rather than skewing the fit (it grows back as statistics
 accumulate).
 
+**`load.buffer`** (default 0) adds a safety margin on top: the whole forecast
+is scaled by `1 + buffer`, so `0.1` plans for 10% more house load everywhere
+— including temperature-driven peaks. The learned profile is a *mean*; buffer
+it if you'd rather the planner run conservative (slightly more kept in the
+battery, exports rated slightly less affordable). Pick the right insurance
+knob: the buffer shapes the **forecast**, while `battery.soc_min` (reserve
+floor) and the daily full-charge target shape **SoC policy** — stacking all
+three overlaps. The dashboard's load-forecast line shows the active buffer.
+
 **Without `entities.load_power`** (or before learning first succeeds) HEM
 plans with **zero house load** and flags it: `sensor.hem_status` carries
 `load_forecast: unconfigured|pending` and the dashboard shows a warning.

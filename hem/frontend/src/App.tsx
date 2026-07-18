@@ -74,6 +74,7 @@ function loadForecastLine(plan: PlanResponse): string | null {
     ? ` · temperature response from ${lf.temp_entity} — up to ` +
       `${lf.heat_kw_per_deg} kW/°C heating, ${lf.cool_kw_per_deg} kW/°C cooling`
     : " · no temperature response";
+  if (lf.buffer) text += ` · +${Math.round(lf.buffer * 100)}% buffer`;
   return text;
 }
 

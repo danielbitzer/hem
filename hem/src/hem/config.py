@@ -134,6 +134,15 @@ class Grid(BaseModel):
     export_limit_kw: float = Field(ge=0)
 
 
+class Load(BaseModel):
+    # Safety margin on the learned load forecast: the whole forecast vector is
+    # scaled by (1 + buffer), after the temperature response. The learned
+    # profile is a mean — this plans for consistently more than it. Distinct
+    # from soc_min / the daily target, which shape SoC *policy*; the buffer
+    # shapes the forecast itself.
+    buffer: float = Field(default=0.0, ge=0, le=1)
+
+
 class Optimizer(BaseModel):
     horizon_hours: int = Field(default=36, ge=2, le=72)
     terminal_soc_value: Literal["auto"] | float = "auto"
@@ -163,6 +172,7 @@ class Settings(BaseModel):
     entities: Entities
     battery: Battery
     grid: Grid
+    load: Load = Load()
     optimizer: Optimizer = Optimizer()
     spike: Spike = Spike()
 

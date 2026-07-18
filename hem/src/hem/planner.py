@@ -215,6 +215,11 @@ class Planner:
         pv_kw = resample_mean(pv, grid)
         temps = resample_previous(temps_series, grid) if temps_series else None
         load_kw = self._load_forecaster.forecast(grid, temps)
+        # Safety buffer: plan for consistently more than the learned mean.
+        # After the temperature response (a buffered heatwave stays buffered),
+        # before the feasibility clamp below.
+        if (buffer := self._settings.load.buffer) > 0:
+            load_kw = load_kw * (1.0 + buffer)
         # Feasibility guard: the power balance can always serve load up to
         # import + PV (the battery may be empty, so its discharge doesn't
         # count); anything beyond that turns the MILP infeasible. Real load
@@ -268,7 +273,11 @@ class Planner:
             price_forecast_end=min(prices.buy.end, prices.sell.end),
             coverage=cov,
             load_forecast_status=self._load_forecaster.status,
-            load_forecast_info=self._load_forecaster.details,
+            load_forecast_info=(
+                {**self._load_forecaster.details, "buffer": buffer}
+                if buffer > 0
+                else self._load_forecaster.details
+            ),
         )
 
     def _discharge_caps(self, steps: int, live_spike: bool) -> np.ndarray | None:

@@ -247,6 +247,25 @@ export const SECTIONS: SectionSpec[] = [
     ],
   },
   {
+    id: "load",
+    title: "Load forecast",
+    description:
+      "The house load forecast is learned from your consumption history (see the " +
+      "load sensor under Entities) — nothing to configure beyond an optional safety margin.",
+    fields: [
+      number(
+        "load.buffer",
+        "Forecast buffer",
+        "Safety margin on the learned forecast: the whole forecast is scaled by " +
+          "(1 + buffer), so 0.1 plans for 10% more house load everywhere, including " +
+          "temperature-driven peaks. The learned profile is a mean — buffer it if " +
+          "you'd rather the planner run conservative. Distinct from the SoC reserve " +
+          "and the daily target, which shape battery policy rather than the forecast.",
+        { min: 0, max: 1, step: 0.05, default: "0" },
+      ),
+    ],
+  },
+  {
     id: "optimizer",
     title: "Optimizer",
     description: "Horizon, solver limits and behavioral thresholds.",

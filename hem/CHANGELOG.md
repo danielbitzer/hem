@@ -21,6 +21,10 @@
 - **`battery.daily_target_hour` is now `battery.daily_target_time`** (HH:MM,
   default 15:00): the daily full-charge target supports minutes and is a
   proper time picker in the Settings view.
+- **`load.buffer`** (default 0): safety margin on the learned load forecast —
+  the whole forecast (temperature response included) is scaled by
+  `1 + buffer`, so 0.1 plans for 10% more house load everywhere. Shown on the
+  dashboard's load-forecast line when active.
 
 - **Dashboard rewritten in React** (#3): React 19 with the React Compiler,
   TypeScript, Recharts, Tailwind — built by Vite/Bun into the same fully
