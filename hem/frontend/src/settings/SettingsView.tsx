@@ -293,6 +293,7 @@ function FieldRow({
             type={spec.kind === "text" ? "text" : spec.kind}
             className="w-44"
             value={String(value)}
+            placeholder={typeof spec.default === "string" ? spec.default : undefined}
             min={spec.min}
             max={spec.max}
             step={spec.step}
