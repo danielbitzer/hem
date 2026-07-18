@@ -20,6 +20,28 @@ nothing is written to your inverter.
 
 ## Configuration
 
+**HEM is configured in its own web UI, not on the add-on's Configuration
+tab.** Open the Energy Manager panel and go to **Settings**: every field has
+inline documentation, entity fields are searchable pickers with friendly
+names, and saving validates the whole document server-side and applies it
+before the next cycle — no add-on restart. The add-on's Supervisor options
+hold only `log_level`.
+
+**A fresh install starts disabled**: no planning cycles run and
+`sensor.hem_status` reports `unconfigured`, which keeps the actuator
+blueprint's failsafe in self-consumption. Configure your entities and flip
+the **HEM enabled** switch to start planning. The same switch is the master
+off-switch later: turning it off publishes `sensor.hem_status` as `disabled`
+(anything other than `ok` makes the actuator revert the inverter to
+self-consumption on its next 5-minute sweep).
+
+The config lives in `/data/hem-config.json` (kept across restarts and
+updates, previous version in `.bak`). Note ingress is HA-session
+authenticated: any logged-in HA user who can open the panel can edit the
+config — the same trust level as the rest of the dashboard.
+
+The sections below document what each setting means in depth.
+
 ### `entities`
 
 Point each option at your entity IDs. Amber Express's forecast attributes live on
@@ -147,7 +169,7 @@ reaches the grid if `grid.export_limit_kw` allows it.
 
 | Entity | Meaning |
 |---|---|
-| `sensor.hem_status` | `ok` / `degraded`; heartbeat with solve stats and `load_forecast` |
+| `sensor.hem_status` | `ok` / `degraded` / `disabled` / `unconfigured`; heartbeat with solve stats and `load_forecast`. Anything other than `ok` makes the actuator blueprint fail safe to self-consumption |
 | `sensor.hem_action` | recommended action now: charge / discharge / idle / no_charge / curtail (carries `power_kw`/`power_w` attributes, atomic with the action) |
 
 Actions are **grid-coupled**: `charge` means charging *from the grid*, and

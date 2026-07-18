@@ -1,3 +1,4 @@
+import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
@@ -6,6 +7,9 @@ export default defineConfig({
   // Served behind HA ingress at an unpredictable path prefix — every asset
   // URL must be relative.
   base: "./",
+  resolve: {
+    alias: { "@": path.resolve(import.meta.dirname, "./src") },
+  },
   plugins: [
     react({
       babel: { plugins: [["babel-plugin-react-compiler", {}]] },

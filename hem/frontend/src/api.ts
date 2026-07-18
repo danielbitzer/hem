@@ -105,3 +105,66 @@ export async function fetchPlanOrExplain(): Promise<PlanResponse> {
     throw new PlanError(msg);
   }
 }
+
+// ---- in-app configuration (issue #5) ----------------------------------------
+// The config document itself is intentionally loose here: the server's
+// pydantic Settings model is the single source of truth and the validation
+// gate; the form reads/writes it via dot paths from the field spec.
+
+export type ConfigDoc = Record<string, unknown>;
+
+export const ConfigResponseSchema = z.object({
+  configured: z.boolean(),
+  lifecycle: z.enum(["running", "disabled", "unconfigured"]),
+  config: z.record(z.string(), z.unknown()).nullable(),
+});
+export type ConfigResponse = z.infer<typeof ConfigResponseSchema>;
+
+export const EntitySchema = z.object({
+  entity_id: z.string(),
+  name: z.string(),
+  domain: z.string(),
+  device_class: z.string().nullish(),
+  unit: z.string().nullish(),
+});
+export type Entity = z.infer<typeof EntitySchema>;
+
+export interface FieldError {
+  loc: string; // dot path, e.g. "battery.capacity_kwh"
+  msg: string;
+}
+
+/** PUT /api/config rejected the document — per-field pydantic errors. */
+export class ConfigValidationError extends Error {
+  constructor(public fieldErrors: FieldError[]) {
+    super("configuration is invalid");
+  }
+}
+
+export async function fetchConfig(): Promise<ConfigResponse> {
+  const resp = await fetch("./api/config", { cache: "no-store" });
+  if (!resp.ok) throw new Error(`config fetch failed: ${resp.statusText}`);
+  return ConfigResponseSchema.parse(await resp.json());
+}
+
+export async function putConfig(doc: ConfigDoc): Promise<void> {
+  const resp = await fetch("./api/config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(doc),
+  });
+  if (resp.status === 422) {
+    const body = (await resp.json()) as { errors: FieldError[] };
+    throw new ConfigValidationError(body.errors);
+  }
+  if (!resp.ok) throw new Error(`config save failed: ${resp.statusText}`);
+}
+
+export async function fetchEntities(): Promise<Entity[]> {
+  const resp = await fetch("./api/entities", { cache: "no-store" });
+  if (!resp.ok) {
+    const detail = ((await resp.json().catch(() => ({}))) as { error?: string }).error;
+    throw new Error(detail ?? `entity list failed: ${resp.statusText}`);
+  }
+  return z.object({ entities: z.array(EntitySchema) }).parse(await resp.json()).entities;
+}

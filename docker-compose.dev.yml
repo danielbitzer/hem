@@ -4,10 +4,12 @@ services:
     environment:
       HEM_HA_URL: ${HEM_HA_URL:-http://homeassistant.local:8123}
       HEM_HA_TOKEN: ${HEM_HA_TOKEN:?set in .env or environment}
-      HEM_OPTIONS_FILE: /config/options.json
       HEM_LOG_LEVEL: ${HEM_LOG_LEVEL:-debug}
     volumes:
-      - ./dev-options.json:/config/options.json:ro
+      # /data mirrors the Supervisor layout; hem-config.json is created and
+      # edited via the web UI (Settings view). A directory mount, not a file
+      # mount — atomic config writes replace the file by rename.
+      - ./hem/data:/data
     ports:
       - "8099:8099"
     restart: unless-stopped

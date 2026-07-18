@@ -125,7 +125,6 @@ cd hem
 uv sync
 HEM_HA_URL=http://homeassistant.local:8123 \
 HEM_HA_TOKEN=<long-lived token> \
-HEM_OPTIONS_FILE=./dev-options.json \
 uv run python -m hem
 ```
 

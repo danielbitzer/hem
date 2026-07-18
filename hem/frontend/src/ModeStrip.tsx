@@ -98,7 +98,7 @@ export function ModeStrip({ rows, domain }: { rows: Row[]; domain: [number, numb
                 <span className="font-semibold whitespace-nowrap">
                   {local.seg.action.replace("_", " ")}
                 </span>
-                <span className="text-muted whitespace-nowrap">
+                <span className="text-muted-foreground whitespace-nowrap">
                   {" "}
                   {fmtDayTime(local.seg.startMs)} → {fmtDayTime(local.seg.endMs)}
                 </span>
