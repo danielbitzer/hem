@@ -40,14 +40,19 @@ function buildDefaults(config: Record<string, unknown> | null): FormValues {
   const values: FormValues = { enabled: config?.enabled === true };
   for (const f of ALL_FIELDS) {
     const raw = config ? getPath(config, f.path) : undefined;
-    const v: string | boolean =
-      f.kind === "boolean"
-        ? raw === undefined
-          ? f.default === true
-          : raw === true
-        : raw === undefined
-          ? String(f.default ?? "")
-          : String(raw);
+    let v: string | boolean;
+    if (f.kind === "boolean") {
+      v = raw === undefined ? f.default === true : raw === true;
+    } else if (f.kind === "select") {
+      v = raw === undefined ? String(f.default ?? "") : String(raw);
+    } else {
+      // Defaults are shown as grey placeholders, not pre-filled values: an
+      // empty input means "use the default" (a stored value EQUAL to the
+      // default also renders as the placeholder — same semantics, and it
+      // keeps default-vs-customized visually distinct after reloads).
+      v = raw === undefined ? "" : String(raw);
+      if (f.default !== undefined && v === String(f.default)) v = "";
+    }
     setPath(values, f.path, v);
   }
   return values;
@@ -266,6 +271,7 @@ function FieldRow({
     <div className="grid gap-1.5 py-3 sm:grid-cols-[230px_minmax(0,1fr)] sm:gap-x-6">
       <Label className="pt-1.5 leading-snug">
         {spec.label}
+        {spec.required && <span className="text-destructive"> *</span>}
         {spec.unit && <span className="text-muted-foreground font-normal"> ({spec.unit})</span>}
       </Label>
       <div className="space-y-1">
@@ -284,6 +290,7 @@ function FieldRow({
             type={spec.kind === "number" ? "number" : "text"}
             className="w-44"
             value={String(value)}
+            placeholder={typeof spec.default === "string" ? spec.default : undefined}
             min={spec.min}
             max={spec.max}
             step={spec.step}

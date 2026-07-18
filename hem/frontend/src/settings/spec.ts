@@ -68,7 +68,7 @@ export const SECTIONS: SectionSpec[] = [
       entity(
         "entities.price_spike",
         "Price spike",
-        "Amber Express price-spike binary sensor. Optional; enables the spike reserve strategy.",
+        "Amber Express price-spike binary sensor — enables the spike reserve strategy.",
         ["binary_sensor"],
         { optional: true, default: "" },
       ),
@@ -101,16 +101,16 @@ export const SECTIONS: SectionSpec[] = [
         "entities.load_power",
         "House load power",
         "House load sensor (W or kW), e.g. the mkaiser package's load_power. The load " +
-          "forecast is learned from its history. Optional but strongly recommended: " +
-          "without it HEM plans with ZERO house load.",
+          "forecast is learned from its history. Strongly recommended: without it HEM " +
+          "plans with ZERO house load.",
         ["sensor"],
         { optional: true, default: "" },
       ),
       entity(
         "entities.outdoor_temp",
         "Outdoor temperature",
-        "Outdoor temperature sensor with long-term statistics. Optional; enables the " +
-          "learned temperature response (extra kW per degree of cooling/heating).",
+        "Outdoor temperature sensor with long-term statistics — enables the learned " +
+          "temperature response (extra kW per degree of cooling/heating).",
         ["sensor"],
         { optional: true, default: "" },
       ),
