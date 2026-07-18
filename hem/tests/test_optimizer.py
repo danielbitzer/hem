@@ -345,3 +345,21 @@ def test_daily_target_yields_when_filling_costs_more_than_the_premium():
     sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.0, target_penalty=0.10))
     assert sol.charge_kw.max() < 0.01  # refused to fill at a loss
     assert sol.soc_kwh[8] == pytest.approx(2.0, abs=1e-3)
+
+
+def test_daily_target_is_an_instant_not_a_floor():
+    """After the target instant the battery must discharge freely — the
+    distinguishing behavior vs a persistent floor."""
+    buy = np.full(12, 0.30)
+    buy[1:8] = 0.05
+    sell = np.zeros(12)
+    sell[9:] = 0.50  # good export window AFTER the target instant
+    inputs = make_inputs(
+        T=12, buy=buy, sell=sell, load=0.0, soc0=2.0,
+        soc_target=_target_at(12, 8, BATTERY.soc_max_kwh),
+    )
+    sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.0, target_penalty=0.10))
+    assert sol.soc_kwh[8] == pytest.approx(BATTERY.soc_max_kwh, abs=1e-3)  # hit the target
+    # ...then discharges flat-out into the sell window: no lingering floor
+    assert np.allclose(sol.discharge_kw[9:], BATTERY.max_discharge_kw, atol=0.01)
+    assert sol.soc_kwh[-1] < BATTERY.soc_max_kwh - 7.0  # well below the target

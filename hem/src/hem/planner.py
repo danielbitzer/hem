@@ -87,6 +87,7 @@ def daily_soc_target_vector(
     target_soc: float,
     target_hour: int,
     capacity_kwh: float,
+    soc_max_kwh: float | None = None,
 ) -> np.ndarray | None:
     """Soft instantaneous SoC targets (length T+1, aligned with soc[]): at
     each local `target_hour` inside the horizon, require target_soc×capacity.
@@ -104,10 +105,16 @@ def daily_soc_target_vector(
     day = times[0].astimezone(tz).date()
     last_day = times[-1].astimezone(tz).date()
     while day <= last_day:
+        # DST note: a nonexistent/ambiguous local hour (spring-forward gap,
+        # fall-back repeat — only target_hour 2-3 in AU) resolves via fold=0
+        # to the sane neighbor; no special handling needed.
         instant = datetime.combine(day, dt_time(hour=target_hour), tzinfo=tz)
         if times[0] < instant <= times[-1]:
             k = next(i for i, t in enumerate(times) if t >= instant)
-            target[k] = target_soc * capacity_kwh
+            # clamp like the spike reserve: a target above soc_max would bake
+            # an unavoidable phantom penalty into every objective
+            kwh = target_soc * capacity_kwh
+            target[k] = kwh if soc_max_kwh is None else min(kwh, soc_max_kwh)
         day += timedelta(days=1)
     return target if np.any(target > 0) else None
 
@@ -238,6 +245,7 @@ class Planner:
                 target_soc=self._settings.battery.daily_target_soc,
                 target_hour=self._settings.battery.daily_target_hour,
                 capacity_kwh=self._battery_params.capacity_kwh,
+                soc_max_kwh=self._battery_params.soc_max_kwh,
             ),
         )
         cov = {

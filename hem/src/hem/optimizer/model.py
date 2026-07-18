@@ -203,7 +203,11 @@ def solve(
         + EPSILON_CHATTER * cp.sum(cp.multiply(pc + pd, dt))
         - config.terminal_value * soc[T]
     )
-    if inputs.soc_target_kwh is not None and np.any(inputs.soc_target_kwh > 0):
+    if (
+        inputs.soc_target_kwh is not None
+        and np.any(inputs.soc_target_kwh > 0)
+        and config.soc_target_penalty_per_kwh > 0
+    ):
         # One-shot penalty per instant (no dt weighting): being short at the
         # target moment is the insured event, however long the steps around it.
         target_slack = cp.Variable(T + 1, nonneg=True)
