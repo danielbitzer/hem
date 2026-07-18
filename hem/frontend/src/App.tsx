@@ -1,10 +1,57 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchPlanOrExplain, type PlanResponse } from "./api";
+import { useEffect, useState } from "react";
+import { type ConfigResponse, fetchConfig, fetchPlanOrExplain, type PlanResponse } from "./api";
 import { BatteryChart, ForecastChart, PricesChart, type Row, SocChart } from "./charts";
+import { Button } from "./components/ui/button";
 import { ModeStrip } from "./ModeStrip";
+import { SettingsView } from "./settings/SettingsView";
 import { Tiles } from "./Tiles";
 
 const REFRESH_MS = 60_000;
+
+type View = "dashboard" | "settings";
+
+export function App() {
+  const [chosenView, setChosenView] = useState<View | null>(null);
+  // Polled so the lifecycle banner clears when the main loop flips to
+  // running shortly after an enable (the save-triggered refetch can race it).
+  const config = useQuery({
+    queryKey: ["config"],
+    queryFn: fetchConfig,
+    refetchInterval: 30_000,
+  });
+  // A fresh install lands (and STAYS — hence pinning it as the chosen view,
+  // or the first successful save would yank the user to the dashboard) in
+  // Settings; once the user navigates, their choice wins.
+  useEffect(() => {
+    if (chosenView === null && config.data && !config.data.configured) {
+      setChosenView("settings");
+    }
+  }, [chosenView, config.data]);
+  const view: View = chosenView ?? "dashboard";
+
+  return (
+    <div>
+      <header className="mb-4 flex items-start justify-between gap-4">
+        <h1 className="text-lg font-bold">Home Energy Manager</h1>
+        <nav className="flex gap-1.5">
+          {(["dashboard", "settings"] as const).map((v) => (
+            <Button
+              key={v}
+              size="sm"
+              variant={view === v ? "default" : "ghost"}
+              aria-current={view === v ? "page" : undefined}
+              onClick={() => setChosenView(v)}
+            >
+              {v === "dashboard" ? "Dashboard" : "Settings"}
+            </Button>
+          ))}
+        </nav>
+      </header>
+      {view === "settings" ? <SettingsView /> : <Dashboard config={config.data} />}
+    </div>
+  );
+}
 
 function metaLine(plan: PlanResponse, tEnd: number): string {
   const computed = new Date(plan.computed_at).toLocaleString();
@@ -40,7 +87,15 @@ function warningText(plan: PlanResponse): string | null {
         "Plans assume ZERO house load; consider raising battery.soc_min until learning kicks in.";
 }
 
-export function App() {
+function lifecycleBanner(config: ConfigResponse | undefined): string | null {
+  if (!config || config.lifecycle === "running") return null;
+  return config.lifecycle === "unconfigured"
+    ? "HEM is not configured yet — no planning cycles run. Open Settings to configure and enable it."
+    : "HEM is disabled — no planning cycles run and your actuator's failsafe keeps the inverter " +
+        "in self-consumption. Enable it in Settings.";
+}
+
+function Dashboard({ config }: { config: ConfigResponse | undefined }) {
   // On error the last good plan stays rendered with the error line above it.
   // Structural sharing keeps object identity for unchanged payloads, so quiet
   // polls don't re-render the charts. (No useMemo below: the React Compiler
@@ -52,6 +107,7 @@ export function App() {
     retry: false,
   });
   const error = queryError ? queryError.message : null;
+  const banner = lifecycleBanner(config);
 
   // Parse interval timestamps exactly once; every child works from Row.
   const rows: Row[] = (plan?.intervals ?? []).map((iv) => ({
@@ -75,8 +131,11 @@ export function App() {
 
   if (!plan) {
     return (
-      <div className="p-6 text-center">
-        {error ? <span className="text-[#c0392b]">{error}</span> : "loading…"}
+      <div>
+        {banner && <Banner text={banner} />}
+        <div className="p-6 text-center">
+          {error ? <span className="text-[#c0392b]">{error}</span> : "loading…"}
+        </div>
       </div>
     );
   }
@@ -93,23 +152,27 @@ export function App() {
 
   return (
     <div>
-      <header className="mb-4">
-        <h1 className="mb-1 text-lg font-bold">Home Energy Manager</h1>
-        <div className="text-xs text-muted">{metaLine(plan, domain[1])}</div>
-        {loadLine && <div className="mt-1 text-xs text-muted">{loadLine}</div>}
+      <div className="mb-4">
+        <div className="text-muted-foreground text-xs">{metaLine(plan, domain[1])}</div>
+        {loadLine && <div className="text-muted-foreground mt-1 text-xs">{loadLine}</div>}
         {error && <div className="mt-1 text-xs text-[#c0392b]">{error}</div>}
-      </header>
-      {warning && (
-        <div className="mb-3.5 rounded-xl border border-[#e67e22] bg-[#e67e22]/10 px-3.5 py-2.5 text-[13px]">
-          {warning}
-        </div>
-      )}
+      </div>
+      {banner && <Banner text={banner} />}
+      {warning && <Banner text={warning} />}
       <Tiles plan={plan} rows={rows} />
       <PricesChart rows={chartRows} domain={domain} forecastEnd={fcEnd} />
       <ForecastChart rows={chartRows} domain={domain} />
       <ModeStrip rows={rows} domain={domain} />
       <BatteryChart rows={chartRows} domain={domain} />
       <SocChart rows={chartRows} domain={domain} capacity={plan.meta.capacity_kwh ?? null} />
+    </div>
+  );
+}
+
+function Banner({ text }: { text: string }) {
+  return (
+    <div className="mb-3.5 rounded-xl border border-[#e67e22] bg-[#e67e22]/10 px-3.5 py-2.5 text-[13px]">
+      {text}
     </div>
   );
 }

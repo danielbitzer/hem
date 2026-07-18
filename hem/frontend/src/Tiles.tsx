@@ -23,8 +23,8 @@ function Tile({
   help?: string;
 }) {
   return (
-    <div className="min-w-[130px] rounded-xl border border-edge bg-card px-4 py-2.5">
-      <div className="text-[11px] tracking-wider text-muted uppercase">
+    <div className="min-w-[130px] rounded-xl border border-border bg-card px-4 py-2.5">
+      <div className="text-[11px] tracking-wider text-muted-foreground uppercase">
         {label}
         {help && (
           <span
@@ -38,7 +38,7 @@ function Tile({
       <div className="mt-0.5 text-xl font-semibold" style={valueColor ? { color: valueColor } : undefined}>
         {value}
       </div>
-      {sub && <div className="mt-0.5 text-[11px] text-muted">{sub}</div>}
+      {sub && <div className="mt-0.5 text-[11px] text-muted-foreground">{sub}</div>}
     </div>
   );
 }

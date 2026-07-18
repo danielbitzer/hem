@@ -85,12 +85,12 @@ def daily_soc_target_vector(
     tz: ZoneInfo,
     *,
     target_soc: float,
-    target_hour: int,
+    target_time: dt_time,
     capacity_kwh: float,
     soc_max_kwh: float | None = None,
 ) -> np.ndarray | None:
     """Soft instantaneous SoC targets (length T+1, aligned with soc[]): at
-    each local `target_hour` inside the horizon, require target_soc×capacity.
+    each local `target_time` inside the horizon, require target_soc×capacity.
 
     The daily full-charge insurance: unforecast spikes and surprise load have
     zero value in the objective, so the pure economics stop charging at
@@ -105,10 +105,10 @@ def daily_soc_target_vector(
     day = times[0].astimezone(tz).date()
     last_day = times[-1].astimezone(tz).date()
     while day <= last_day:
-        # DST note: a nonexistent/ambiguous local hour (spring-forward gap,
-        # fall-back repeat — only target_hour 2-3 in AU) resolves via fold=0
-        # to the sane neighbor; no special handling needed.
-        instant = datetime.combine(day, dt_time(hour=target_hour), tzinfo=tz)
+        # DST note: a nonexistent/ambiguous local time (spring-forward gap,
+        # fall-back repeat — only 2-3am in AU) resolves via fold=0 to the
+        # sane neighbor; no special handling needed.
+        instant = datetime.combine(day, target_time, tzinfo=tz)
         if times[0] < instant <= times[-1]:
             k = next(i for i, t in enumerate(times) if t >= instant)
             # clamp like the spike reserve: a target above soc_max would bake
@@ -243,7 +243,7 @@ class Planner:
                 grid,
                 self._tz,
                 target_soc=self._settings.battery.daily_target_soc,
-                target_hour=self._settings.battery.daily_target_hour,
+                target_time=self._settings.battery.daily_target_time,
                 capacity_kwh=self._battery_params.capacity_kwh,
                 soc_max_kwh=self._battery_params.soc_max_kwh,
             ),

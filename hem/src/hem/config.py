@@ -1,12 +1,16 @@
 """Configuration loading.
 
-Two sources, resolved independently:
+Three sources, resolved independently:
 
 - Environment (EnvSettings, pydantic-settings): HEM_* env vars and hem/.env.
   Under the Supervisor, SUPERVISOR_TOKEN wins and the proxy URLs are used;
   standalone needs HEM_HA_URL + HEM_HA_TOKEN.
-- Options: /data/options.json (Supervisor-rendered add-on options), or
-  HEM_OPTIONS_FILE standalone.
+- Supervisor options (/data/options.json): log_level ONLY — everything else
+  is configured in the web UI (issue #5).
+- The HEM-owned config document (see config_store): the pydantic Settings
+  model below, edited via the dashboard's Settings view and validated here —
+  the exact model the planner consumes, so the UI can never accept a config
+  the app would reject.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from datetime import time as dt_time
 from pathlib import Path
 from typing import Literal, Self
 
@@ -32,7 +37,7 @@ class EnvSettings(BaseSettings):
 
     ha_url: str = ""  # HEM_HA_URL, standalone only
     ha_token: str = ""  # HEM_HA_TOKEN, standalone only
-    options_file: Path | None = None  # HEM_OPTIONS_FILE
+    config_file: Path | None = None  # HEM_CONFIG_FILE, overrides the hem-config.json path
     log_level: str = ""  # HEM_LOG_LEVEL, overrides options log_level when set
 
 
@@ -107,18 +112,20 @@ class Battery(BaseModel):
     # charging. Set charge_positive if your sensor reads the other way.
     power_convention: Literal["charge_positive", "charge_negative"] = "charge_negative"
     # Daily full-charge insurance: softly require SoC >= daily_target_soc at
-    # daily_target_hour (local) each day. The penalty is the premium you'll
+    # daily_target_time (local) each day. The penalty is the premium you'll
     # pay per missing kWh — high enough to beat forgone feed-in on a normal
     # day, low enough that a genuinely better opportunity (a real spike)
     # still outbids it. 0 disables.
     daily_target_soc: float = Field(default=0.0, ge=0, le=1)
-    daily_target_hour: int = Field(default=15, ge=0, le=23)
+    daily_target_time: dt_time = dt_time(15, 0)
     daily_target_penalty_per_kwh: float = Field(default=0.10, ge=0)
 
     @model_validator(mode="after")
     def _soc_bounds_ordered(self) -> Self:
         if self.soc_min >= self.soc_max:
             raise ValueError("battery.soc_min must be < battery.soc_max")
+        if self.daily_target_time.tzinfo is not None:
+            raise ValueError("battery.daily_target_time must be a plain local time (no offset)")
         return self
 
 
@@ -148,26 +155,25 @@ class Spike(BaseModel):
 
 
 class Settings(BaseModel):
+    # Master switch, toggled in the web UI. While disabled (including the
+    # not-yet-configured first boot) HEM publishes sensor.hem_status as
+    # "disabled"/"unconfigured" instead of "ok", which trips the actuator
+    # blueprint's failsafe: the inverter reverts to self-consumption.
+    enabled: bool = False
     entities: Entities
     battery: Battery
     grid: Grid
     optimizer: Optimizer = Optimizer()
     spike: Spike = Spike()
-    log_level: Literal["debug", "info", "warning", "error"] = "info"
 
 
-DEV_OPTIONS_FALLBACK = "dev-options.json"
-
-
-def load_settings(path: str | Path | None = None) -> Settings:
-    candidates = (
-        [Path(path)] if path else [Path(DEFAULT_OPTIONS_FILE), Path(DEV_OPTIONS_FALLBACK)]
-    )
-    for candidate in candidates:
-        if candidate.exists():
-            return Settings.model_validate(json.loads(candidate.read_text()))
-    raise RuntimeError(
-        f"Options file not found (tried {', '.join(str(c) for c in candidates)}). "
-        "Under the Supervisor /data/options.json is rendered automatically; "
-        "standalone, create ./dev-options.json or set HEM_OPTIONS_FILE."
-    )
+def resolve_log_level(env: EnvSettings) -> str:
+    """HEM_LOG_LEVEL, else log_level from the Supervisor-rendered add-on
+    options — the only option left in config.yaml — else info."""
+    if env.log_level:
+        return env.log_level
+    try:
+        level = json.loads(Path(DEFAULT_OPTIONS_FILE).read_text()).get("log_level")
+    except (OSError, ValueError):
+        return "info"
+    return level or "info"

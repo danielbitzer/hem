@@ -117,18 +117,20 @@ Two things to check:
 
 1. Settings → Add-ons → Add-on store → ⋮ → Repositories → add
    `https://github.com/danielbitzer/hem` → install **Home Energy Manager**.
-2. Open the **Configuration** tab and fill in:
-   - `entities.*` — the entity IDs from steps 2–5.
-   - `battery.*` — capacity, charge/discharge limits (deliberately cap these
-     below your inverter's capability to reduce cell wear; `spike.discharge_kw`
-     can raise the cap during confirmed spikes only), efficiency, SoC bounds,
-     wear cost.
-   - `grid.*` — your connection's import limit and DNSP export limit.
-   - `spike.*` — the spike-reserve hedge; defaults are sane, see the
-     Documentation tab.
-3. Start the add-on and watch the log: you should see `cycle ok: action=...`
-   within a minute. The **Energy Manager** sidebar item (ingress) shows the
-   dashboard — plan, prices, PV/load forecast, SoC trajectory.
+2. Start the add-on. It boots **unconfigured and disabled** — no planning
+   runs yet. Open the **Energy Manager** sidebar item (ingress) → **Settings**
+   and fill in (every field has inline help; entity fields are searchable
+   pickers):
+   - **Entities** — the entities from steps 2–5.
+   - **Battery** — capacity, charge/discharge limits (deliberately cap these
+     below your inverter's capability to reduce cell wear; the spike
+     discharge cap can raise it during confirmed spikes only), efficiency,
+     SoC bounds, wear cost.
+   - **Grid connection** — your connection's import limit and DNSP export limit.
+   - **Spike strategy** — the spike-reserve hedge; defaults are sane.
+3. Flip **HEM enabled** on, save, and watch the add-on log: you should see
+   `cycle ok: action=...` within a minute. The Dashboard view shows the plan
+   — prices, PV/load forecast, SoC trajectory.
 4. Check Developer tools → States for `sensor.hem_action`,
    `sensor.hem_power_setpoint`, `sensor.hem_soc_target`,
    `sensor.hem_horizon_cost`, `sensor.hem_status`.

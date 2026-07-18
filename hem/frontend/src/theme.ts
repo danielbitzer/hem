@@ -4,7 +4,7 @@ import type { Action } from "./api";
 export const ACTION_COLORS: Record<Action, string> = {
   charge: "#2e86de",
   discharge: "#10ac84",
-  idle: "var(--muted)", // follows the theme, like the old .action-idle class
+  idle: "var(--muted-foreground)", // follows the theme, like the old .action-idle class
   no_charge: "#8e44ad",
   curtail: "#e67e22",
 };

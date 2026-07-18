@@ -1,8 +1,10 @@
 """Phase 1 verification CLI: fetch all live inputs, build the aligned grid,
 and print it as a table for eyeballing against HA's entity attributes.
 
-    HEM_HA_URL=... HEM_HA_TOKEN=... HEM_OPTIONS_FILE=./dev-options.json \
-        uv run python -m hem.snapshot
+    HEM_HA_URL=... HEM_HA_TOKEN=... uv run python -m hem.snapshot
+
+Reads the same hem-config.json the app maintains (./hem-config.json in a dev
+checkout, HEM_CONFIG_FILE to override) — configure via the web UI first.
 """
 
 from __future__ import annotations
@@ -14,7 +16,8 @@ from hem.adapters.amber import AmberExpressAdapter
 from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
 from hem.adapters.weather import WeatherAdapter, WeatherParseError
-from hem.config import EnvSettings, load_settings, resolve_connection
+from hem.config import EnvSettings, resolve_connection
+from hem.config_store import ConfigStore, resolve_config_path
 from hem.forecast.load import build_load_forecaster, default_timezone
 from hem.ha.client import HaClient
 from hem.timegrid import TimeGrid, coverage, resample_mean, resample_previous
@@ -22,7 +25,10 @@ from hem.timegrid import TimeGrid, coverage, resample_mean, resample_previous
 
 async def main() -> None:
     env = EnvSettings()
-    settings = load_settings(env.options_file)
+    store = ConfigStore(resolve_config_path(env.config_file))
+    settings = store.load()
+    if settings is None:
+        raise SystemExit(f"no valid config at {store.path} — configure HEM in the web UI first")
     conn = resolve_connection(env)
     tz = default_timezone()
     now = datetime.now(UTC)

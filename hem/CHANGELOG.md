@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- **Configuration moves into the web UI** (#5): a new Settings view (shadcn
+  UI + TanStack Form) with per-field inline documentation, searchable entity
+  pickers fed by a new `/api/entities` endpoint, server-side validation with
+  per-field errors, and save-and-apply without an add-on restart. HEM now
+  owns its config at `/data/hem-config.json` (atomic writes, `.bak`,
+  `schema_version`); the Supervisor options are reduced to `log_level` only.
+  **Breaking**: existing installs must clear the old options from the add-on
+  Configuration tab (⋮ → Edit in YAML, leave only `log_level`) and re-enter
+  settings in the web UI — there is no migration. A new **HEM enabled**
+  master switch (off on first boot / until configured) stops planning cycles
+  and publishes `sensor.hem_status` as `disabled`/`unconfigured`, so the
+  actuator blueprint's failsafe keeps the inverter in self-consumption;
+  `/health` stays healthy in those states so the watchdog doesn't
+  restart-loop a deliberately disabled add-on. Standalone dev uses
+  `./hem-config.json` (via the same UI); `dev-options.json` and
+  `HEM_OPTIONS_FILE` are gone.
+- **`battery.daily_target_hour` is now `battery.daily_target_time`** (HH:MM,
+  default 15:00): the daily full-charge target supports minutes and is a
+  proper time picker in the Settings view.
+
 - **Dashboard rewritten in React** (#3): React 19 with the React Compiler,
   TypeScript, Recharts, Tailwind — built by Vite/Bun into the same fully
   offline ingress bundle. Feature parity with the old page (tiles, meta and

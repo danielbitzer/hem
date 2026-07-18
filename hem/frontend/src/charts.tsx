@@ -53,7 +53,7 @@ function makeTicks(t0: number, tEnd: number, stepHours = 2): number[] {
 
 function LegendRow({ items }: { items: { label: string; color: string }[] }) {
   return (
-    <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+    <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
       {items.map(({ label, color }) => (
         <span key={label} className="inline-flex items-center gap-1.5">
           <span className="size-2.5 rounded-full" style={{ background: color }} />
@@ -70,7 +70,7 @@ type TipPayload = { name?: string | number; value?: number | string; color?: str
  * so the two can't drift apart visually. */
 export function TooltipPanel({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-edge bg-card px-3 py-2 text-xs shadow-sm">
+    <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-sm">
       {children}
     </div>
   );
@@ -95,7 +95,7 @@ function ChartTip({
         typeof p.value === "number" && typeof p.name === "string" ? (
           <div key={p.name} className="flex items-center gap-1.5">
             <span className="size-2 rounded-full" style={{ background: p.color }} />
-            <span className="text-muted">{p.name}:</span>
+            <span className="text-muted-foreground">{p.name}:</span>
             <span className="font-semibold">{format(p.name, p.value)}</span>
           </div>
         ) : null,
@@ -106,8 +106,8 @@ function ChartTip({
 
 export function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="mb-3.5 rounded-xl border border-edge bg-card p-3">
-      <h2 className="mb-1 text-[13px] font-semibold text-muted">{title}</h2>
+    <div className="mb-3.5 rounded-xl border border-border bg-card p-3">
+      <h2 className="mb-1 text-[13px] font-semibold text-muted-foreground">{title}</h2>
       {children}
     </div>
   );

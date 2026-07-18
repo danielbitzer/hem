@@ -1,27 +1,6 @@
 configuration:
-  entities:
-    name: Input entities
-    description: >-
-      Entity IDs for prices, solar forecast, battery state and weather.
-      load_power (optional) is a house load sensor in W or kW, required for
-      the history load-profile source; outdoor_temp (optional) enables the
-      learned temperature response.
-  battery:
-    name: Battery parameters
-    description: >-
-      Capacity, battery-side power limits (wear-conscious), efficiency, SoC
-      bounds and wear cost. See the Documentation tab for each field.
-  grid:
-    name: Grid connection limits
-    description: >-
-      Net import/export limits at the meter (connection capacity and DNSP
-      export limit) — distinct from the battery power limits.
-  optimizer:
-    name: Optimizer settings
-    description: Horizon, solver timeout and behavioral thresholds.
-  spike:
-    name: Spike strategy
-    description: SoC reserve behavior when Amber flags potential price spikes.
   log_level:
     name: Log level
-    description: Logging verbosity.
+    description: >-
+      Logging verbosity. Everything else is configured in the web UI: open
+      the Energy Manager panel and go to Settings.

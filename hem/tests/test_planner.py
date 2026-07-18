@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from datetime import time as dt_time
 from typing import cast
 from zoneinfo import ZoneInfo
 
@@ -356,26 +357,35 @@ def test_daily_soc_target_vector_maps_local_hour_across_days():
     boundaries = [now + timedelta(minutes=30 * i) for i in range(80)]
     grid = TimeGrid.build(now, boundaries, timedelta(hours=36))
     target = daily_soc_target_vector(
-        grid, ADELAIDE, target_soc=1.0, target_hour=15, capacity_kwh=44.8
+        grid, ADELAIDE, target_soc=1.0, target_time=dt_time(15, 0), capacity_kwh=44.8
     )
     assert target is not None and len(target) == len(grid) + 1
     hits = np.nonzero(target)[0]
     assert list(hits) == [11, 59]
     assert target[11] == pytest.approx(44.8)
 
+    # minutes resolution: 15:30 local is one 30-min step later than 15:00
+    half = daily_soc_target_vector(
+        grid, ADELAIDE, target_soc=1.0, target_time=dt_time(15, 30), capacity_kwh=44.8
+    )
+    assert half is not None
+    assert list(np.nonzero(half)[0]) == [12, 60]
+
     # target hour already past for today -> only tomorrow's instant remains
     later = datetime(2026, 7, 18, 6, 0, tzinfo=UTC)  # 15:30 Adelaide
     boundaries2 = [later + timedelta(minutes=30 * i) for i in range(80)]
     grid2 = TimeGrid.build(later, boundaries2, timedelta(hours=36))
     target2 = daily_soc_target_vector(
-        grid2, ADELAIDE, target_soc=1.0, target_hour=15, capacity_kwh=44.8
+        grid2, ADELAIDE, target_soc=1.0, target_time=dt_time(15, 0), capacity_kwh=44.8
     )
     assert target2 is not None
     assert len(np.nonzero(target2)[0]) == 1  # tomorrow only
 
     # disabled
     assert (
-        daily_soc_target_vector(grid, ADELAIDE, target_soc=0.0, target_hour=15, capacity_kwh=44.8)
+        daily_soc_target_vector(
+            grid, ADELAIDE, target_soc=0.0, target_time=dt_time(15, 0), capacity_kwh=44.8
+        )
         is None
     )
 

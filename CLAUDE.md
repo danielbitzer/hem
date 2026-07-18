@@ -29,3 +29,9 @@ add a Node/Bun build step to the Dockerfile (aarch64 builds run under QEMU).
 Dev: `bun run dev` proxies `/api` + `/health` to a running HEM on :8099. The
 page is served behind HA ingress: every URL must stay relative (`base: './'`,
 fetch `./api/...`) and the bundle fully offline (no CDN).
+
+UI components are shadcn (`src/components/ui`, checked in — edit freely, or
+re-generate with `bunx shadcn add <name>`); forms use TanStack Form, data
+fetching TanStack Query, API contracts are Zod schemas in `src/api.ts`.
+Dark mode follows `prefers-color-scheme` via a custom variant in `index.css`
+— HA ingress never sets a `.dark` class, so don't use class-based theming.

@@ -15,6 +15,7 @@ import os
 import signal
 import time
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import uvicorn
 
@@ -23,7 +24,8 @@ from hem.adapters.amber import AmberExpressAdapter
 from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
 from hem.adapters.weather import WeatherAdapter
-from hem.config import EnvSettings, Settings, load_settings, resolve_connection
+from hem.config import EnvSettings, Settings, resolve_connection, resolve_log_level
+from hem.config_store import ConfigController, ConfigStore, resolve_config_path
 from hem.forecast.load import build_load_forecaster, default_timezone
 from hem.ha.client import HaClient
 from hem.ha.publisher import Publisher
@@ -138,15 +140,96 @@ async def cycle(
     return plan
 
 
+def build_planner(settings: Settings, client: HaClient, tz: ZoneInfo) -> Planner:
+    return Planner(
+        settings,
+        prices=AmberExpressAdapter(client, settings.entities),
+        solar=OpenMeteoSolarAdapter(client, settings.entities),
+        battery=SungrowAdapter(client, settings.entities, settings.battery),
+        weather=WeatherAdapter(client, settings.entities),
+        tz=tz,
+        load_forecaster=build_load_forecaster(
+            client,
+            settings.entities.load_power,
+            tz,
+            outdoor_temp=settings.entities.outdoor_temp,
+        ),
+    )
+
+
+async def _run_planner(
+    settings: Settings,
+    client: HaClient,
+    publisher: Publisher,
+    tz: ZoneInfo,
+    app_state: AppState,
+    controller: ConfigController,
+) -> None:
+    """Build components for the current config and run cycles until the config
+    changes (hot-apply: the caller re-reads controller.current and rebuilds)."""
+    planner = build_planner(settings, client, tz)
+    watcher = PriceWatcher(settings)
+    watcher_task = asyncio.create_task(watcher.run(client))
+
+    try:
+        while not controller.changed.is_set():
+            try:
+                async with asyncio.timeout(90):
+                    await cycle(planner, publisher, settings, app_state)
+                app_state.health.mark_success()
+            except asyncio.CancelledError:
+                raise
+            except InputsStale as e:
+                log.warning("degraded: %s", e)
+                app_state.health.mark_error(str(e))
+                with contextlib.suppress(Exception):
+                    await publisher.publish_status("degraded", detail=str(e))
+            except Exception as e:  # noqa: BLE001 - cycle must never kill the loop
+                log.exception("cycle failed")
+                app_state.health.mark_error(str(e))
+                with contextlib.suppress(Exception):
+                    await publisher.publish_status("degraded", detail=str(e))
+
+            # Wake on: the 5-min boundary, a significant price move, or a
+            # config change from the Settings UI — whichever comes first.
+            delay = seconds_to_next_boundary(time.time())
+            price_wait = asyncio.create_task(watcher.trigger.wait())
+            config_wait = asyncio.create_task(controller.changed.wait())
+            try:
+                done, _ = await asyncio.wait(
+                    {price_wait, config_wait},
+                    timeout=delay,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            finally:
+                for t in (price_wait, config_wait):
+                    t.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await t
+            if config_wait in done:
+                return
+            # Clear observed-or-stale triggers BEFORE any sleep so a boundary
+            # timeout during the debounce can't leave the event set and cause
+            # a spurious extra re-solve.
+            watcher.trigger.clear()
+            if price_wait in done:
+                await asyncio.sleep(EVENT_DEBOUNCE_S)  # coalesce price bursts
+    finally:
+        watcher_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await watcher_task
+
+
 async def run() -> None:
     env = EnvSettings()  # HEM_* env vars, plus ./.env in dev
-    settings = load_settings(env.options_file)
     logging.basicConfig(
-        level=(env.log_level or settings.log_level).upper(),
+        level=resolve_log_level(env).upper(),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     conn = resolve_connection(env)
-    log.info("HEM v%s starting (api=%s)", __version__, conn.rest_url)
+    store = ConfigStore(resolve_config_path(env.config_file))
+    controller = ConfigController(store, store.load())
+    log.info("HEM v%s starting (api=%s, config=%s)", __version__, conn.rest_url, store.path)
 
     if os.environ.get("SUPERVISOR_TOKEN"):
         log.info("dashboard: HA sidebar -> Energy Manager (ingress)")
@@ -154,89 +237,79 @@ async def run() -> None:
         log.info("dashboard: http://localhost:%d", WEB_PORT)
 
     app_state = AppState()
-    web_task = asyncio.create_task(_serve_web(app_state))
-
-    # uvicorn's serve() captures SIGTERM/SIGINT and RE-RAISES them with default
-    # handlers after its graceful stop — killing the process before our finally
-    # blocks can run. Own handlers, installed after the web task starts, win:
-    # they cancel this task so shutdown is clean and logged.
-    loop = asyncio.get_running_loop()
-    main_task = asyncio.current_task()
-    assert main_task is not None
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        with contextlib.suppress(NotImplementedError, RuntimeError):
-            loop.add_signal_handler(sig, main_task.cancel)
 
     try:
         async with HaClient(conn) as client:
-            if not await client.api_ok():
-                log.warning("Home Assistant API not reachable yet; will retry each cycle")
-            publisher = Publisher(client)
-            tz = default_timezone()
-            planner = Planner(
-                settings,
-                prices=AmberExpressAdapter(client, settings.entities),
-                solar=OpenMeteoSolarAdapter(client, settings.entities),
-                battery=SungrowAdapter(client, settings.entities, settings.battery),
-                weather=WeatherAdapter(client, settings.entities),
-                tz=tz,
-                load_forecaster=build_load_forecaster(
-                    client,
-                    settings.entities.load_power,
-                    tz,
-                    outdoor_temp=settings.entities.outdoor_temp,
-                ),
-            )
-            watcher = PriceWatcher(settings)
-            watcher_task = asyncio.create_task(watcher.run(client))
+            web_task = asyncio.create_task(_serve_web(app_state, controller, client))
+
+            # uvicorn's serve() captures SIGTERM/SIGINT and RE-RAISES them with
+            # default handlers after its graceful stop — killing the process
+            # before our finally blocks can run. Own handlers, installed after
+            # the web task starts, win: they cancel this task so shutdown is
+            # clean and logged.
+            loop = asyncio.get_running_loop()
+            main_task = asyncio.current_task()
+            assert main_task is not None
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                with contextlib.suppress(NotImplementedError, RuntimeError):
+                    loop.add_signal_handler(sig, main_task.cancel)
 
             try:
+                if not await client.api_ok():
+                    log.warning("Home Assistant API not reachable yet; will retry each cycle")
+                publisher = Publisher(client)
+                tz = default_timezone()
                 while True:
-                    try:
-                        async with asyncio.timeout(90):
-                            await cycle(planner, publisher, settings, app_state)
-                        app_state.health.mark_success()
-                    except asyncio.CancelledError:
-                        raise
-                    except InputsStale as e:
-                        log.warning("degraded: %s", e)
-                        app_state.health.mark_error(str(e))
+                    # No await between clear() and the current read: a PUT
+                    # landing after the read re-sets the event and is seen by
+                    # the next is_set()/wait().
+                    controller.changed.clear()
+                    settings = controller.current
+                    if settings is None or not settings.enabled:
+                        status = "unconfigured" if settings is None else "disabled"
+                        if app_state.lifecycle != status:
+                            log.info(
+                                "%s — no planning cycles; sensor.hem_status=%r keeps the "
+                                "actuator's failsafe in self-consumption. Configure and "
+                                "enable HEM in the dashboard's Settings view.",
+                                status,
+                                status,
+                            )
+                        app_state.lifecycle = status
+                        # Republish each pass: keeps the heartbeat fresh and a
+                        # non-ok status in front of the blueprint even across
+                        # HA restarts (REST sensors are ephemeral).
                         with contextlib.suppress(Exception):
-                            await publisher.publish_status("degraded", detail=str(e))
-                    except Exception as e:  # noqa: BLE001 - cycle must never kill the loop
-                        log.exception("cycle failed")
-                        app_state.health.mark_error(str(e))
-                        with contextlib.suppress(Exception):
-                            await publisher.publish_status("degraded", detail=str(e))
-
-                    delay = seconds_to_next_boundary(time.time())
-                    try:
-                        async with asyncio.timeout(delay):
-                            await watcher.trigger.wait()
-                            # trigger observed: clear BEFORE the debounce so a
-                            # boundary timeout during the sleep can't leave the
-                            # event set and cause a spurious extra re-solve
-                            watcher.trigger.clear()
-                            await asyncio.sleep(EVENT_DEBOUNCE_S)  # coalesce bursts
-                    except TimeoutError:
-                        watcher.trigger.clear()
+                            await publisher.publish_status(
+                                status, detail="configure and enable HEM in the web UI"
+                            )
+                        with contextlib.suppress(TimeoutError):
+                            async with asyncio.timeout(CYCLE_SECONDS):
+                                await controller.changed.wait()
+                        continue
+                    if app_state.lifecycle != "running":
+                        app_state.health.restart_grace()
+                    app_state.lifecycle = "running"
+                    await _run_planner(settings, client, publisher, tz, app_state, controller)
+                    log.info("configuration changed; applying")
             finally:
-                watcher_task.cancel()
+                web_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
-                    await watcher_task
+                    await web_task
     except asyncio.CancelledError:
         log.info("shutting down (signal received)")
-    finally:
-        web_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await web_task
 
 
-async def _serve_web(app_state: AppState) -> None:
+async def _serve_web(app_state: AppState, controller: ConfigController, client: HaClient) -> None:
     """Run the dashboard; planning must survive its failure (e.g. port bound —
     uvicorn raises SystemExit(3) inside the task)."""
     server = uvicorn.Server(
-        uvicorn.Config(create_app(app_state), host="0.0.0.0", port=WEB_PORT, log_level="warning")
+        uvicorn.Config(
+            create_app(app_state, controller, client),
+            host="0.0.0.0",
+            port=WEB_PORT,
+            log_level="warning",
+        )
     )
     try:
         await server.serve()
