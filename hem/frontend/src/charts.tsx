@@ -208,8 +208,9 @@ export function PricesChart({
             label={{
               value: "forecast padded",
               angle: -90,
-              // center = both axes; rotated, so it reads vertically mid-band
-              position: "center",
+              // vertically centered, hugging the band's left edge
+              position: "insideLeft",
+              offset: 8,
               fontSize: 10,
               fill: dark ? "#9a9aa2" : "#6e6e73",
             }}
