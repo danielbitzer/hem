@@ -15,7 +15,10 @@
     "capacity_kwh": 12.8,
     "max_charge_kw": 5.0,
     "max_discharge_kw": 5.0,
-    "power_convention": "charge_negative"
+    "power_convention": "charge_negative",
+    "daily_target_soc": 1.0,
+    "daily_target_hour": 15,
+    "daily_target_penalty_per_kwh": 0.1
   },
   "grid": {
     "import_limit_kw": 15.0,
