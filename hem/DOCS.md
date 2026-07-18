@@ -59,7 +59,7 @@ much lower if you expect the battery to outlive its warranty).
 rational optimizer only charges enough for the *forecast* — unforecast spikes
 and surprise usage are worth nothing to it, so on a mild day it may stop at
 50%. Setting `daily_target_soc` (e.g. `1.0`) softly requires that SoC at
-`daily_target_hour` local time (default 15, i.e. 3pm — before the evening
+`daily_target_time` local time (default 15:00, before the evening
 ramp) each day. Soft means: the plan pays up to
 `daily_target_penalty_per_kwh` (default $0.10) per missing kWh — your
 explicit insurance premium. Filling via forgone feed-in or a cheap grid

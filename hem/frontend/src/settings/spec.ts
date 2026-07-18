@@ -3,7 +3,7 @@
 // in-app field documentation). The server's pydantic Settings model is the
 // validation authority — min/max here are input hints only.
 
-export type FieldKind = "entity" | "number" | "boolean" | "select" | "text";
+export type FieldKind = "entity" | "number" | "boolean" | "select" | "text" | "time";
 
 export interface FieldSpec {
   path: string; // dot path in the config document, e.g. "battery.capacity_kwh"
@@ -204,12 +204,13 @@ export const SECTIONS: SectionSpec[] = [
           "discharges freely into the evening peak.",
         { min: 0, max: 1, step: 0.05, default: "0" },
       ),
-      number(
-        "battery.daily_target_hour",
-        "Daily target hour",
-        "Local hour of day the daily target applies at (15 = 3pm, before the evening ramp).",
-        { min: 0, max: 23, step: 1, default: "15" },
-      ),
+      {
+        path: "battery.daily_target_time",
+        label: "Daily target time",
+        kind: "time",
+        default: "15:00",
+        help: "Local time of day the daily target applies at (default 15:00, before the evening ramp).",
+      },
       number(
         "battery.daily_target_penalty_per_kwh",
         "Daily target penalty",

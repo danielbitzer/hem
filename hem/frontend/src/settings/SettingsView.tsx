@@ -51,6 +51,7 @@ function buildDefaults(config: Record<string, unknown> | null): FormValues {
       // default also renders as the placeholder — same semantics, and it
       // keeps default-vs-customized visually distinct after reloads).
       v = raw === undefined ? "" : String(raw);
+      if (f.kind === "time") v = v.slice(0, 5); // pydantic dumps "15:00:00"
       if (f.default !== undefined && v === String(f.default)) v = "";
     }
     setPath(values, f.path, v);
@@ -74,6 +75,8 @@ function toDoc(values: FormValues): ConfigDoc {
     } else if (f.kind === "text") {
       // terminal_soc_value: "auto" | number
       if (s !== "") setPath(doc, f.path, s !== "auto" && !Number.isNaN(Number(s)) ? Number(s) : s);
+    } else if (f.kind === "time") {
+      if (s !== "") setPath(doc, f.path, s); // "16:30"; empty -> server default
     } else {
       setPath(doc, f.path, s); // entity ids ("" = not used) and selects
     }
@@ -285,12 +288,11 @@ function FieldRow({
             invalid={!!error}
           />
         )}
-        {(spec.kind === "number" || spec.kind === "text") && (
+        {(spec.kind === "number" || spec.kind === "text" || spec.kind === "time") && (
           <Input
-            type={spec.kind === "number" ? "number" : "text"}
+            type={spec.kind === "text" ? "text" : spec.kind}
             className="w-44"
             value={String(value)}
-            placeholder={typeof spec.default === "string" ? spec.default : undefined}
             min={spec.min}
             max={spec.max}
             step={spec.step}

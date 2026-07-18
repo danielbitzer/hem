@@ -39,7 +39,8 @@ export function App() {
             <Button
               key={v}
               size="sm"
-              variant={view === v ? "secondary" : "ghost"}
+              variant={view === v ? "default" : "ghost"}
+              aria-current={view === v ? "page" : undefined}
               onClick={() => setChosenView(v)}
             >
               {v === "dashboard" ? "Dashboard" : "Settings"}

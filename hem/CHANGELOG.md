@@ -18,6 +18,9 @@
   restart-loop a deliberately disabled add-on. Standalone dev uses
   `./hem-config.json` (via the same UI); `dev-options.json` and
   `HEM_OPTIONS_FILE` are gone.
+- **`battery.daily_target_hour` is now `battery.daily_target_time`** (HH:MM,
+  default 15:00): the daily full-charge target supports minutes and is a
+  proper time picker in the Settings view.
 
 - **Dashboard rewritten in React** (#3): React 19 with the React Compiler,
   TypeScript, Recharts, Tailwind — built by Vite/Bun into the same fully
