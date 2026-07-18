@@ -1,5 +1,5 @@
 name: Home Energy Manager
-version: 0.1.9
+version: 0.2.0
 slug: hem
 description: MILP battery/solar optimizer for Amber Electric dynamic pricing
 url: https://github.com/danielbitzer/hem

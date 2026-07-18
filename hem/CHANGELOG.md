@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - **Configuration moves into the web UI** (#5): a new Settings view (shadcn
   UI + TanStack Form) with per-field inline documentation, searchable entity
