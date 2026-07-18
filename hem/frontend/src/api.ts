@@ -38,6 +38,7 @@ export const LoadForecastInfoSchema = z.looseObject({
   temp_entity: z.string().optional(),
   heat_kw_per_deg: z.number().optional(),
   cool_kw_per_deg: z.number().optional(),
+  buffer: z.number().optional(),
 });
 export type LoadForecastInfo = z.infer<typeof LoadForecastInfoSchema>;
 

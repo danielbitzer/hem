@@ -390,6 +390,20 @@ def test_daily_soc_target_vector_maps_local_hour_across_days():
     )
 
 
+async def test_load_buffer_scales_the_forecast():
+    # load.buffer plans for consistently more than the learned mean; applied
+    # before the feasibility clamp and surfaced in load_forecast_info
+    fake = full_fake_ha()
+    async with fake_ha_client(fake) as client:
+        plain = await make_planner(client, make_settings()).gather(NOW)
+        buffered = await make_planner(
+            client, make_settings(load={"buffer": 0.25})
+        ).gather(NOW)
+    assert np.allclose(buffered.inputs.load, plain.inputs.load * 1.25)
+    assert buffered.load_forecast_info["buffer"] == 0.25
+    assert "buffer" not in plain.load_forecast_info
+
+
 async def test_daily_target_wired_into_inputs():
     settings = make_settings(
         battery={
