@@ -32,6 +32,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hem"]
+# The Vite-built dashboard is gitignored, which hatchling would otherwise
+# exclude from wheels — today the Docker image runs an editable install so it
+# works regardless, but this keeps a non-editable install from silently
+# shipping without the dashboard.
+artifacts = ["src/hem/web/dist"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

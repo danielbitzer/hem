@@ -30,9 +30,37 @@ jobs:
       - name: Test
         run: uv run pytest
 
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hem/frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      # Builds into hem/src/hem/web/dist, where the add-on serves it from.
+      # Built once here (amd64) — it's arch-independent — so the per-arch
+      # image builds under QEMU never run Node.
+      - name: Build
+        run: bun run build
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dashboard-dist
+          path: hem/src/hem/web/dist
+          if-no-files-found: error
+
   build:
     name: Build ${{ matrix.arch }}
-    needs: test
+    needs: [test, frontend]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -42,6 +70,11 @@ jobs:
         arch: [aarch64, amd64]
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dashboard-dist
+          path: hem/src/hem/web/dist
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'

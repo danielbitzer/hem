@@ -17,4 +17,15 @@ publishes the GHCR images.
 
 ## Checks
 Run `uv run ruff check .` and `uv run pytest -q` from `hem/` before
-committing.
+committing. For frontend changes also run `bun run typecheck` and
+`bun run build` from `hem/frontend/`.
+
+## Frontend (hem/frontend)
+React 19 (+ React Compiler) + TypeScript + Recharts + Tailwind v4, built by
+Vite with Bun as package manager (`bunfig.toml` pins `minimumReleaseAge` to
+7 days — keep it). `bun run build` outputs to `hem/src/hem/web/dist`
+(gitignored); CI builds it once and the per-arch image builds COPY it — never
+add a Node/Bun build step to the Dockerfile (aarch64 builds run under QEMU).
+Dev: `bun run dev` proxies `/api` + `/health` to a running HEM on :8099. The
+page is served behind HA ingress: every URL must stay relative (`base: './'`,
+fetch `./api/...`) and the bundle fully offline (no CDN).

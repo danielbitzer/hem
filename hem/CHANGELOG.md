@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Dashboard rewritten in React** (#3): React 19 with the React Compiler,
+  TypeScript, Recharts, Tailwind — built by Vite/Bun into the same fully
+  offline ingress bundle. Feature parity with the old page (tiles, meta and
+  load-forecast lines, warning banner, padded-tail band, all charts), plus
+  the mode strip now joins the synced hover crosshair. The `/api/plan`
+  contract is unchanged — now expressed as Zod schemas that validate every
+  response, with polling handled by TanStack Query.
+
 ## 0.1.9
 
 - **Soft daily SoC target** (`battery.daily_target_soc`, off by default):

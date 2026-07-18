@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* Ported palette from the original dashboard; Tailwind utilities reference
+   these so a future redesign can retheme in one place. */
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f9;
+  --card: #ffffff;
+  --text: #1c1c1e;
+  --muted: #6e6e73;
+  --border: #e3e3e8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111113;
+    --card: #1c1c1f;
+    --text: #ececf0;
+    --muted: #9a9aa2;
+    --border: #2c2c30;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-card: var(--card);
+  --color-fg: var(--text);
+  --color-muted: var(--muted);
+  --color-edge: var(--border);
+}
+
+body {
+  @apply bg-bg text-fg m-0 p-4 text-sm;
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.45;
+}
