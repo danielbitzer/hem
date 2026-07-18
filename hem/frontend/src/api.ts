@@ -1,55 +1,66 @@
-// Typed mirror of the add-on's /api/plan payload (see hem/web/app.py).
-// The API is unchanged by the React migration — this file is the contract.
+// Zod mirror of the add-on's /api/plan payload (see hem/web/app.py) — the
+// single source of truth for the contract: TS types are inferred from the
+// schemas, and every response is validated so a drift fails loudly at the
+// fetch boundary instead of rendering garbage. The API is unchanged by the
+// React migration. Frontend and backend ship in the same image, so strict
+// validation carries no version-skew risk.
 
-export type Action = "charge" | "discharge" | "idle" | "no_charge" | "curtail";
+import { z } from "zod";
 
-export interface PlanInterval {
-  start: string; // ISO datetime
-  end: string;
-  action: Action;
-  power_kw: number; // +charge / −discharge
-  soc_start: number; // kWh
-  soc_end: number;
-  buy: number; // $/kWh
-  sell: number;
-  pv_kw: number;
-  load_kw: number;
-  grid_import_kw: number;
-  grid_export_kw: number;
-  interval_cost: number;
-}
+export const ActionSchema = z.enum(["charge", "discharge", "idle", "no_charge", "curtail"]);
+export type Action = z.infer<typeof ActionSchema>;
 
-export interface LoadForecastInfo {
-  load_entity?: string;
-  source?: string;
-  window_days?: number;
-  hours_used?: number;
-  buckets?: string;
-  temp_response?: boolean;
-  learned_at?: string;
-  temp_entity?: string;
-  heat_kw_per_deg?: number;
-  cool_kw_per_deg?: number;
-}
+export const PlanIntervalSchema = z.object({
+  start: z.string(), // ISO datetime
+  end: z.string(),
+  action: ActionSchema,
+  power_kw: z.number(), // +charge / −discharge
+  soc_start: z.number(), // kWh
+  soc_end: z.number(),
+  buy: z.number(), // $/kWh
+  sell: z.number(),
+  pv_kw: z.number(),
+  load_kw: z.number(),
+  grid_import_kw: z.number(),
+  grid_export_kw: z.number(),
+  interval_cost: z.number(),
+});
+export type PlanInterval = z.infer<typeof PlanIntervalSchema>;
 
-// Some fields are not consumed by the UI (yet) — this file mirrors the FULL
-// payload so the contract is visible in one place.
-export interface PlanMeta {
-  capacity_kwh?: number;
-  price_forecast_end?: string | null;
-  coverage?: Record<string, number> | null;
-  load_forecast?: "learned" | "pending" | "unconfigured";
-  load_forecast_info?: LoadForecastInfo;
-}
+export const LoadForecastInfoSchema = z.looseObject({
+  load_entity: z.string().optional(),
+  source: z.string().optional(),
+  window_days: z.number().optional(),
+  hours_used: z.number().optional(),
+  buckets: z.string().optional(),
+  temp_response: z.boolean().optional(),
+  learned_at: z.string().optional(),
+  temp_entity: z.string().optional(),
+  heat_kw_per_deg: z.number().optional(),
+  cool_kw_per_deg: z.number().optional(),
+});
+export type LoadForecastInfo = z.infer<typeof LoadForecastInfoSchema>;
 
-export interface PlanResponse {
-  computed_at: string;
-  solver_status: string;
-  solve_ms: number;
-  objective_cost: number;
-  meta: PlanMeta;
-  intervals: PlanInterval[];
-}
+// meta is a loose object: the backend adds informational keys over time and
+// the UI should keep working (and keep validating) without listing them all.
+export const PlanMetaSchema = z.looseObject({
+  capacity_kwh: z.number().optional(),
+  price_forecast_end: z.string().nullish(),
+  coverage: z.record(z.string(), z.number()).nullish(),
+  load_forecast: z.enum(["learned", "pending", "unconfigured"]).optional(),
+  load_forecast_info: LoadForecastInfoSchema.optional(),
+});
+export type PlanMeta = z.infer<typeof PlanMetaSchema>;
+
+export const PlanResponseSchema = z.object({
+  computed_at: z.string(),
+  solver_status: z.string(),
+  solve_ms: z.number(),
+  objective_cost: z.number(),
+  meta: PlanMetaSchema,
+  intervals: z.array(PlanIntervalSchema),
+});
+export type PlanResponse = z.infer<typeof PlanResponseSchema>;
 
 export class PlanError extends Error {}
 
@@ -65,7 +76,11 @@ export async function fetchPlan(): Promise<PlanResponse> {
     }
     throw new PlanError(detail);
   }
-  return (await resp.json()) as PlanResponse;
+  const parsed = PlanResponseSchema.safeParse(await resp.json());
+  if (!parsed.success) {
+    throw new PlanError(`plan payload failed validation: ${z.prettifyError(parsed.error)}`);
+  }
+  return parsed.data;
 }
 
 export async function fetchHealthError(): Promise<string> {
@@ -75,5 +90,18 @@ export async function fetchHealthError(): Promise<string> {
     return body.last_error ?? "";
   } catch {
     return "";
+  }
+}
+
+/** fetchPlan with the add-on's last cycle error appended — the message the
+ * dashboard shows when a poll fails. Used as the TanStack Query queryFn. */
+export async function fetchPlanOrExplain(): Promise<PlanResponse> {
+  try {
+    return await fetchPlan();
+  } catch (e) {
+    let msg = `No plan yet: ${e instanceof PlanError ? e.message : String(e)}`;
+    const lastError = await fetchHealthError();
+    if (lastError) msg += ` — last cycle error: ${lastError}`;
+    throw new PlanError(msg);
   }
 }

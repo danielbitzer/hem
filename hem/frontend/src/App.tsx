@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { fetchHealthError, fetchPlan, PlanError, type PlanResponse } from "./api";
+import { useQuery } from "@tanstack/react-query";
+import { fetchPlanOrExplain, type PlanResponse } from "./api";
 import { BatteryChart, ForecastChart, PricesChart, type Row, SocChart } from "./charts";
 import { ModeStrip } from "./ModeStrip";
 import { Tiles } from "./Tiles";
@@ -41,60 +41,37 @@ function warningText(plan: PlanResponse): string | null {
 }
 
 export function App() {
-  const [plan, setPlan] = useState<PlanResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    const refresh = async () => {
-      try {
-        const next = await fetchPlan();
-        if (!alive) return;
-        // Keep the previous object identity for identical plans so the memoized
-        // rows — and every chart under them — skip re-rendering on quiet polls.
-        setPlan((prev) => (prev && prev.computed_at === next.computed_at ? prev : next));
-        setError(null);
-      } catch (e) {
-        if (!alive) return;
-        let msg = `No plan yet: ${e instanceof PlanError ? e.message : String(e)}`;
-        const lastError = await fetchHealthError();
-        if (lastError) msg += ` — last cycle error: ${lastError}`;
-        if (alive) setError(msg);
-      }
-    };
-    void refresh();
-    const id = setInterval(() => void refresh(), REFRESH_MS);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
+  // On error the last good plan stays rendered with the error line above it.
+  // Structural sharing keeps object identity for unchanged payloads, so quiet
+  // polls don't re-render the charts. (No useMemo below: the React Compiler
+  // memoizes these derivations.)
+  const { data: plan, error: queryError } = useQuery<PlanResponse>({
+    queryKey: ["plan"],
+    queryFn: fetchPlanOrExplain,
+    refetchInterval: REFRESH_MS,
+    retry: false,
+  });
+  const error = queryError ? queryError.message : null;
 
   // Parse interval timestamps exactly once; every child works from Row.
-  const rows = useMemo<Row[]>(
-    () =>
-      (plan?.intervals ?? []).map((iv) => ({
-        t: Date.parse(iv.start),
-        end: Date.parse(iv.end),
-        action: iv.action,
-        buy: iv.buy,
-        sell: iv.sell,
-        pv: iv.pv_kw,
-        load: iv.load_kw,
-        battery: iv.power_kw,
-        gridImport: iv.grid_import_kw,
-        gridExport: -iv.grid_export_kw,
-        soc: iv.soc_end,
-      })),
-    [plan],
-  );
+  const rows: Row[] = (plan?.intervals ?? []).map((iv) => ({
+    t: Date.parse(iv.start),
+    end: Date.parse(iv.end),
+    action: iv.action,
+    buy: iv.buy,
+    sell: iv.sell,
+    pv: iv.pv_kw,
+    load: iv.load_kw,
+    battery: iv.power_kw,
+    gridImport: iv.grid_import_kw,
+    gridExport: -iv.grid_export_kw,
+    soc: iv.soc_end,
+  }));
 
   // Step charts need a closing point at the final interval's END, or every
   // line stops one interval short of the axis edge (and of the mode strip).
-  const chartRows = useMemo<Row[]>(() => {
-    const last = rows[rows.length - 1];
-    return last ? [...rows, { ...last, t: last.end }] : rows;
-  }, [rows]);
+  const lastRow = rows[rows.length - 1];
+  const chartRows: Row[] = lastRow ? [...rows, { ...lastRow, t: lastRow.end }] : rows;
 
   if (!plan) {
     return (
