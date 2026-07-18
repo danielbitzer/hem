@@ -1,7 +1,10 @@
+import json
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
+from test_config import MINIMAL_CONFIG, make_settings
 
+from hem.config_store import ConfigController, ConfigStore
 from hem.models import Action, Plan, PlanInterval
 from hem.web.app import AppState, create_app
 
@@ -65,3 +68,85 @@ def test_missing_dist_says_how_to_build(tmp_path):
     resp = client.get("/")
     assert resp.status_code == 503
     assert "bun run build" in resp.json()["error"]
+
+
+def make_controller(tmp_path, settings=None) -> ConfigController:
+    store = ConfigStore(tmp_path / "hem-config.json")
+    if settings is not None:
+        store.save(settings)
+    return ConfigController(store, settings)
+
+
+def test_health_stays_healthy_while_disabled(tmp_path):
+    state = AppState(lifecycle="unconfigured")
+    # a year of no cycles would normally be unhealthy — but there are
+    # deliberately no cycles, and the watchdog must not restart-loop us
+    state.health.started_at = datetime(2025, 7, 1, tzinfo=UTC)
+    client = TestClient(create_app(state))
+    body = client.get("/health")
+    assert body.status_code == 200
+    assert body.json()["lifecycle"] == "unconfigured"
+
+
+def test_get_config_unconfigured(tmp_path):
+    client = TestClient(create_app(AppState(), make_controller(tmp_path)))
+    body = client.get("/api/config").json()
+    assert body == {"configured": False, "lifecycle": "running", "config": None}
+
+
+def test_put_config_persists_and_wakes_the_loop(tmp_path):
+    controller = make_controller(tmp_path)
+    client = TestClient(create_app(AppState(), controller))
+
+    resp = client.put("/api/config", json={**MINIMAL_CONFIG, "enabled": True})
+    assert resp.status_code == 200
+    assert resp.json()["config"]["enabled"] is True
+    assert controller.current is not None and controller.current.enabled is True
+    assert controller.changed.is_set()  # main loop wakes and hot-applies
+    on_disk = json.loads((tmp_path / "hem-config.json").read_text())
+    assert on_disk["config"]["battery"]["capacity_kwh"] == 12.8
+
+    body = client.get("/api/config").json()
+    assert body["configured"] is True
+    assert body["config"]["entities"]["battery_soc"] == "sensor.battery_level"
+
+
+def test_put_config_invalid_returns_per_field_errors(tmp_path):
+    controller = make_controller(tmp_path, make_settings())
+    client = TestClient(create_app(AppState(), controller))
+
+    bad = json.loads(json.dumps(MINIMAL_CONFIG))
+    bad["battery"]["capacity_kwh"] = -1
+    bad["entities"].pop("weather")
+    resp = client.put("/api/config", json=bad)
+    assert resp.status_code == 422
+    locs = {err["loc"] for err in resp.json()["errors"]}
+    assert "battery.capacity_kwh" in locs
+    assert "entities.weather" in locs
+    # nothing applied, nothing written
+    assert controller.current.battery.capacity_kwh == 12.8
+    assert not controller.changed.is_set()
+
+
+class FakeStatesClient:
+    async def list_states(self):
+        from hem.ha.client import State
+
+        now = datetime.now(UTC)
+        return [
+            State("sensor.load_power", "1.2", {"friendly_name": "Load power",
+                                               "device_class": "power",
+                                               "unit_of_measurement": "kW"}, now),
+            State("weather.home", "sunny", {"friendly_name": "Home"}, now),
+        ]
+
+
+def test_entities_endpoint_lists_for_pickers():
+    client = TestClient(create_app(AppState(), client=FakeStatesClient()))
+    body = client.get("/api/entities").json()
+    assert body["entities"] == [
+        {"entity_id": "sensor.load_power", "name": "Load power", "domain": "sensor",
+         "device_class": "power", "unit": "kW"},
+        {"entity_id": "weather.home", "name": "Home", "domain": "weather",
+         "device_class": None, "unit": None},
+    ]

@@ -9,7 +9,10 @@ wheels/
 # Virtual environments
 .venv
 
-# Local dev secrets/config (copy from hem/dev-options.json.example)
+# Local dev secrets/config (hem-config.json is written by the web UI)
+hem-config.json
+hem-config.json.bak
+hem-config.json.tmp
 dev-options.json
 .env
 

@@ -99,6 +99,13 @@ class HaClient:
             data = await resp.json()
         return _parse_state(data)
 
+    async def list_states(self) -> list[State]:
+        """Every entity in HA — feeds the Settings view's entity pickers."""
+        async with self.session.get(self._url("/states")) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+        return [_parse_state(s) for s in data]
+
     async def get_states(self, entity_ids: list[str]) -> dict[str, State]:
         """Fetch all states in one call and pick out the requested entities."""
         async with self.session.get(self._url("/states")) as resp:
