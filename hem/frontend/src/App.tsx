@@ -37,44 +37,47 @@ export function App() {
   const view: View = chosenView ?? "dashboard";
 
   return (
-    <div className="mx-auto min-h-screen max-w-[960px]">
-      <header className="flex items-start justify-between gap-4 border-b border-border bg-card px-[22px] py-[18px]">
-        <div className="min-w-0">
-          <h1 className="text-[17px] font-bold text-foreground">Home Energy Manager</h1>
-          {plan.data && (
-            <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
-              {metaLine(plan.data)}
-            </div>
-          )}
-          {plan.data && loadForecastLine(plan.data) && (
-            <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-              {loadForecastLine(plan.data)}
-            </div>
-          )}
-          {plan.error && (
-            <div className="mt-1 text-xs text-destructive">{plan.error.message}</div>
-          )}
+    <div className="min-h-screen">
+      {/* Full-bleed header bar; its content aligns with the capped main column */}
+      <header className="border-b border-border bg-card px-[22px] py-[18px]">
+        <div className="mx-auto flex max-w-[960px] items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-[17px] font-bold text-foreground">Home Energy Manager</h1>
+            {plan.data && (
+              <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                {metaLine(plan.data)}
+              </div>
+            )}
+            {plan.data && loadForecastLine(plan.data) && (
+              <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                {loadForecastLine(plan.data)}
+              </div>
+            )}
+            {plan.error && (
+              <div className="mt-1 text-xs text-destructive">{plan.error.message}</div>
+            )}
+          </div>
+          <nav className="flex shrink-0 gap-[3px] rounded-full bg-tab-bg p-[3px]">
+            {(["dashboard", "settings"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                aria-current={view === v ? "page" : undefined}
+                onClick={() => setChosenView(v)}
+                className={
+                  "cursor-pointer rounded-full border-none px-4 py-[7px] text-[13px] font-semibold transition-all " +
+                  (view === v
+                    ? "bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.12)]"
+                    : "bg-transparent text-muted-foreground hover:text-foreground")
+                }
+              >
+                {v === "dashboard" ? "Dashboard" : "Settings"}
+              </button>
+            ))}
+          </nav>
         </div>
-        <nav className="flex shrink-0 gap-[3px] rounded-full bg-tab-bg p-[3px]">
-          {(["dashboard", "settings"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              aria-current={view === v ? "page" : undefined}
-              onClick={() => setChosenView(v)}
-              className={
-                "cursor-pointer rounded-full border-none px-4 py-[7px] text-[13px] font-semibold transition-all " +
-                (view === v
-                  ? "bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.12)]"
-                  : "bg-transparent text-muted-foreground hover:text-foreground")
-              }
-            >
-              {v === "dashboard" ? "Dashboard" : "Settings"}
-            </button>
-          ))}
-        </nav>
       </header>
-      <main className="flex flex-col gap-3.5 p-5">
+      <main className="mx-auto flex max-w-[960px] flex-col gap-3.5 p-5">
         {view === "settings" ? (
           <SettingsView />
         ) : (
