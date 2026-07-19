@@ -57,6 +57,10 @@ class PriceForecast:
     current_sell: float
     live_spike: bool = False  # from the price-spike binary sensor
     updated_at: datetime | None = None  # oldest source last_updated, for staleness checks
+    # True while the current interval's price is Amber's forecast, not the
+    # AEMO-confirmed actual (the sensors' `estimate` attribute) — right after
+    # an interval starts, before confirmation lands ~seconds later.
+    current_estimate: bool = False
 
 
 @dataclass

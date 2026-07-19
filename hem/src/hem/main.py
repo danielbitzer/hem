@@ -39,7 +39,11 @@ log = logging.getLogger("hem")
 CYCLE_SECONDS = 300
 WEB_PORT = 8099
 EVENT_DEBOUNCE_S = 2  # buy+sell arrive together; just soak up that burst
-PRICE_TRIGGER_DELTA = 0.05  # $/kWh move that justifies an early re-solve
+# Floor between EVENT-driven re-solves (boundary solves unaffected): a solve
+# is ~50 ms, so this is not about cost — it stops a flapping sensor (e.g.
+# unavailable churn) from spinning the loop. Amber's confirmed price lands
+# well past this after the boundary solve, so the normal case is undelayed.
+MIN_EVENT_SOLVE_GAP_S = 15
 WS_RECONNECT_BACKOFF_S = 30
 
 
@@ -49,7 +53,11 @@ def seconds_to_next_boundary(now_epoch: float, period: int = CYCLE_SECONDS) -> f
 
 
 class PriceWatcher:
-    """Triggers an asyncio.Event on significant price moves / spike changes."""
+    """Triggers an asyncio.Event on ANY change of a watched price/spike
+    sensor — value or estimate flag. Every solve should reflect the live
+    price (a solve is ~50 ms; hysteresis stops action flapping), and an
+    estimate->confirmed flip at the SAME value must still re-solve so the
+    dashboard's "unconfirmed price" marker clears."""
 
     def __init__(self, settings: Settings):
         ent = settings.entities
@@ -57,21 +65,29 @@ class PriceWatcher:
         self.trigger = asyncio.Event()
         self._last_seen: dict[str, str] = {}
 
-    def on_change(self, entity_id: str, new_state: str, old_state: str | None = None) -> None:
+    @staticmethod
+    def _key(state: str, attrs: dict | None) -> str:
+        return f"{state}|{(attrs or {}).get('estimate')}"
+
+    def on_change(
+        self,
+        entity_id: str,
+        new_state: str,
+        old_state: str | None = None,
+        new_attrs: dict | None = None,
+        old_attrs: dict | None = None,
+    ) -> None:
         # seed from the event's own old_state so the FIRST change after a
         # (re)connect can still trigger — a spike confirming minutes after an
         # add-on restart must not wait for the 5-min boundary
-        last = self._last_seen.get(entity_id) or old_state
-        self._last_seen[entity_id] = new_state
-        if last is None or last == new_state:
-            return
-        try:
-            significant = abs(float(new_state) - float(last)) >= PRICE_TRIGGER_DELTA
-        except ValueError:
-            significant = True  # binary spike sensor or unavailable transitions
-        if significant:
-            log.info("price event: %s %s -> %s; early re-solve", entity_id, last, new_state)
-            self.trigger.set()
+        key = self._key(new_state, new_attrs)
+        old_key = self._key(old_state, old_attrs) if old_state is not None else None
+        last = self._last_seen.get(entity_id) or old_key
+        self._last_seen[entity_id] = key
+        if last is None or last == key:
+            return  # attribute-noise (e.g. forecast list refresh) or unseeded
+        log.info("price event: %s %s -> %s; early re-solve", entity_id, last, key)
+        self.trigger.set()
 
     async def run(self, client: HaClient) -> None:
         while True:
@@ -114,6 +130,10 @@ async def cycle(
         "load_forecast": data.load_forecast_status,
         "load_forecast_info": data.load_forecast_info,
         "vacation": data.vacation,
+        # step-0 prices are Amber's estimate, not yet AEMO-confirmed — the
+        # dashboard marks the price tile; the estimate->confirmed sensor
+        # update triggers a re-solve that clears this within seconds.
+        "prices_estimated": data.prices.current_estimate,
     }
 
     # Publishing IS the output: the user's actuator automation (see
@@ -175,6 +195,7 @@ async def _run_planner(
 
     try:
         while not controller.changed.is_set():
+            solve_started = time.monotonic()
             try:
                 async with asyncio.timeout(90):
                     await cycle(planner, publisher, settings, app_state)
@@ -216,6 +237,10 @@ async def _run_planner(
             watcher.trigger.clear()
             if price_wait in done:
                 await asyncio.sleep(EVENT_DEBOUNCE_S)  # coalesce price bursts
+                # flap floor: never let events re-solve more often than this
+                gap = MIN_EVENT_SOLVE_GAP_S - (time.monotonic() - solve_started)
+                if gap > 0:
+                    await asyncio.sleep(gap)
     finally:
         watcher_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):

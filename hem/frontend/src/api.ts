@@ -57,6 +57,7 @@ export const PlanMetaSchema = z.looseObject({
   load_forecast: z.enum(["learned", "pending", "unconfigured"]).optional(),
   load_forecast_info: LoadForecastInfoSchema.optional(),
   vacation: VacationInfoSchema.nullish(),
+  prices_estimated: z.boolean().optional(),
 });
 export type PlanMeta = z.infer<typeof PlanMetaSchema>;
 
