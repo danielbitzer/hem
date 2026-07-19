@@ -1,7 +1,8 @@
+import type { ReactNode } from "react";
 import type { PlanResponse } from "./api";
 import type { Row } from "./charts";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./components/ui/tooltip";
-import { ACTION_COLORS, fmtTime } from "./theme";
+import { ACTION_COLORS, fmtTime, SERIES } from "./theme";
 
 const HORIZON_COST_HELP =
   "Expected net cash flow at the meter over the plan horizon: planned grid " +
@@ -92,7 +93,7 @@ function Stat({
   help,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   sub: string;
   help?: string;
 }) {
@@ -122,7 +123,13 @@ export function Stats({ plan, rows }: { plan: PlanResponse; rows: Row[] }) {
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <Stat
         label="Amber buy / sell"
-        value={`$${step0.buy.toFixed(2)} / $${step0.sell.toFixed(2)}`}
+        value={
+          <>
+            <span style={{ color: SERIES.buy }}>${step0.buy.toFixed(2)}</span>
+            <span className="text-muted-foreground"> / </span>
+            <span style={{ color: SERIES.sell }}>${step0.sell.toFixed(2)}</span>
+          </>
+        }
         sub={plan.meta.prices_estimated ? "this interval · unconfirmed" : "this interval"}
         help={
           plan.meta.prices_estimated

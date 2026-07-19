@@ -48,11 +48,6 @@ export function App() {
                 {metaLine(plan.data)}
               </div>
             )}
-            {plan.data && loadForecastLine(plan.data) && (
-              <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-                {loadForecastLine(plan.data)}
-              </div>
-            )}
             {plan.error && (
               <div className="mt-1 text-xs text-destructive">{plan.error.message}</div>
             )}
@@ -94,14 +89,10 @@ function metaLine(plan: PlanResponse): string {
     plan.intervals.length && last
       ? Math.round((Date.parse(last.end) - Date.parse(plan.intervals[0]!.start)) / 3_600_000)
       : 0;
-  let text =
+  return (
     `computed ${fmtTime(Date.parse(plan.computed_at))} · ${plan.solver_status} · ` +
-    `${Math.round(plan.solve_ms)} ms · ${plan.intervals.length} intervals · horizon ${horizonH} h`;
-  const fcEnd = plan.meta.price_forecast_end;
-  if (fcEnd && last && Date.parse(fcEnd) < Date.parse(last.end)) {
-    text += ` · price forecast ends ${fmtTime(Date.parse(fcEnd))}`;
-  }
-  return text;
+    `${Math.round(plan.solve_ms)} ms · ${plan.intervals.length} intervals · horizon ${horizonH} h`
+  );
 }
 
 function loadForecastLine(plan: PlanResponse): string | null {
@@ -202,7 +193,7 @@ function Dashboard({
       <Hero plan={plan} rows={rows} />
       <Stats plan={plan} rows={rows} />
       <PricesChart rows={chartRows} domain={domain} forecastEnd={fcEnd} />
-      <ForecastChart rows={chartRows} domain={domain} />
+      <ForecastChart rows={chartRows} domain={domain} info={loadForecastLine(plan)} />
       <ModeStrip rows={rows} domain={domain} />
       <BatteryChart rows={chartRows} domain={domain} />
       <SocChart rows={chartRows} domain={domain} capacity={plan.meta.capacity_kwh ?? null} />

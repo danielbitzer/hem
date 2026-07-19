@@ -243,7 +243,15 @@ export function PricesChart({
   );
 }
 
-export function ForecastChart({ rows, domain }: { rows: Row[]; domain: [number, number] }) {
+export function ForecastChart({
+  rows,
+  domain,
+  info,
+}: {
+  rows: Row[];
+  domain: [number, number];
+  info?: string | null;
+}) {
   return (
     <Card
       title="Forecast kW (PV / load)"
@@ -256,6 +264,9 @@ export function ForecastChart({ rows, domain }: { rows: Row[]; domain: [number, 
         />
       }
     >
+      {info && (
+        <div className="-mt-2.5 mb-2.5 text-xs text-muted-foreground">{info}</div>
+      )}
       <HemChart data={rows} domain={domain} yTickFormat={(v) => v.toFixed(0)} format={kw}>
         <Area dataKey="pv" name="PV" type="stepAfter" stroke={SERIES.pv} strokeWidth={2} fill={SERIES_FILL.pv} fillOpacity={1} isAnimationActive={false} />
         <Line dataKey="load" name="load" type="stepAfter" stroke={SERIES.load} strokeWidth={2} dot={false} isAnimationActive={false} />
