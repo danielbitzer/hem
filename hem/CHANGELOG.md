@@ -1,22 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 - **Dashboard redesigned to the Claude Design "HA Cards" direction (1A)**:
   mirrors Home Assistant's native card look — soft grey canvas, white cards
   with soft borders and shadows, HA-blue accent, purple action accent. New
   header bar with a pill Dashboard/Settings tab switcher and a mono meta
-  line; an "Action now" hero card with the battery setpoint; a 4-up stat
-  grid (Amber prices, SoC target, horizon cost, forecast load); restyled
+  line; an "Action now" hero card with the battery setpoint; a stat row
+  (Amber prices coloured like the chart, horizon cost, forecast load);
+  restyled
   charts (stepped series in the handoff palette, translucent area fills,
   mono axis labels, legends beside titles) and a bordered planned-mode
   ribbon. Settings gets the same card treatment: 48×28 toggle, single
   vacation pill (state + dialog), inset entity pickers and mono number
   inputs, code chips for entity ids. Dark mode uses the handoff's
   "Nightwatch" neutrals with the 1A accents.
-
-## Unreleased
-
 - Dashboard updates now show without a force-refresh: `index.html` is served
   with `Cache-Control: no-cache` (ETag revalidation) so it always points at
   the current hashed bundle; the hashed assets themselves cache as immutable.
