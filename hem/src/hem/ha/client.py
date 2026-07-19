@@ -249,10 +249,11 @@ class HaClient:
     async def watch_states(
         self,
         entity_ids: set[str],
-        on_change: Callable[[str, str, str | None], None],
+        on_change: Callable[[str, str, str | None, dict | None, dict | None], None],
     ) -> None:
         """Subscribe to state_changed events over WebSocket and invoke
-        on_change(entity_id, new_state, old_state) for the given entities.
+        on_change(entity_id, new_state, old_state, new_attrs, old_attrs) for
+        the given entities.
 
         Runs until the connection drops (then raises) — callers wrap this in
         a reconnect loop. The 5-min poll cycle continues regardless, so this
@@ -285,10 +286,16 @@ class HaClient:
                     continue
                 data = payload.get("event", {}).get("data", {})
                 entity_id = data.get("entity_id")
-                new_state = (data.get("new_state") or {}).get("state")
-                old_state = (data.get("old_state") or {}).get("state")
-                if entity_id in entity_ids and new_state is not None:
-                    on_change(entity_id, new_state, old_state)
+                new = data.get("new_state") or {}
+                old = data.get("old_state") or {}
+                if entity_id in entity_ids and new.get("state") is not None:
+                    on_change(
+                        entity_id,
+                        new["state"],
+                        old.get("state"),
+                        new.get("attributes"),
+                        old.get("attributes"),
+                    )
         raise ConnectionError("WebSocket connection closed")
 
 

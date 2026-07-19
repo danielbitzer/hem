@@ -63,7 +63,17 @@ export function Tiles({ plan, rows }: { plan: PlanResponse; rows: Row[] }) {
       <Tile
         label="Amber buy / sell"
         value={`$${step0.buy.toFixed(2)} / $${step0.sell.toFixed(2)}`}
-        sub={`${fmtTime(step0.t)} – ${fmtTime(step0.end)}`}
+        sub={
+          `${fmtTime(step0.t)} – ${fmtTime(step0.end)}` +
+          (plan.meta.prices_estimated ? " · forecast, unconfirmed" : "")
+        }
+        help={
+          plan.meta.prices_estimated
+            ? "Amber hasn't confirmed this interval's price yet — the plan was " +
+              "solved on the forecast value and re-solves the moment the " +
+              "confirmed price lands."
+            : undefined
+        }
       />
       <Tile label="Battery setpoint" value={forced ? `${step0.battery.toFixed(2)} kW` : "—"} />
       <Tile

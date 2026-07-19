@@ -65,7 +65,8 @@ the plan honest:
   toward the median in the objective, so phantom distant spikes don't distort
   near-term decisions.
 - **Event-triggered re-solve**: a WebSocket watcher re-solves within seconds
-  when the live price moves ≥ $0.05 or the spike sensor flips — a confirmed
+  of ANY live price change — including Amber confirming an interval's
+  estimated price — so the plan always reflects the real price. A confirmed
   spike gets a full-power discharge decision immediately, optionally at a
   raised spike-only discharge cap (`spike.discharge_kw`).
 - **Never grid-charge during a confirmed spike**, as a hard guard on top of

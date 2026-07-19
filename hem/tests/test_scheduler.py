@@ -51,14 +51,58 @@ def test_watcher_first_change_after_restart_triggers():
     assert w.trigger.is_set()
 
 
-def test_watcher_small_move_and_unseeded_first_event_do_not_trigger():
+def test_watcher_any_price_move_triggers():
+    # every solve should reflect the live price — no significance threshold
     w = make_watcher()
     w.on_change("sensor.buy", "0.44", None)  # no old_state: nothing to compare
     assert not w.trigger.is_set()
-    w.on_change("sensor.buy", "0.46", "0.44")  # 2c move: below threshold
-    assert not w.trigger.is_set()
-    w.on_change("sensor.buy", "0.95", "0.46")  # spike-sized move
+    w.on_change("sensor.buy", "0.45", "0.44")  # 1c move triggers
     assert w.trigger.is_set()
+
+
+def test_watcher_estimate_flip_at_same_value_triggers():
+    # estimate -> confirmed at the SAME price must re-solve so the
+    # dashboard's "unconfirmed" marker clears
+    w = make_watcher()
+    w.on_change("sensor.buy", "0.44", "0.44", {"estimate": True}, {"estimate": True})
+    assert not w.trigger.is_set()  # seeded, no change
+    w.on_change("sensor.buy", "0.44", "0.44", {"estimate": False}, {"estimate": True})
+    assert w.trigger.is_set()
+
+
+def test_watcher_spike_status_flip_triggers_without_state_change():
+    # _spike_active treats spike_status == "spike" as live even while the
+    # binary sensor state is still "off" — that flip alone must re-solve
+    w = make_watcher()
+    w.on_change(
+        "binary_sensor.spike", "off", "off", {"spike_status": "none"}, {"spike_status": "none"}
+    )
+    assert not w.trigger.is_set()
+    w.on_change(
+        "binary_sensor.spike", "off", "off", {"spike_status": "spike"}, {"spike_status": "none"}
+    )
+    assert w.trigger.is_set()
+
+
+def test_watcher_attribute_noise_does_not_trigger():
+    # the forecast list refreshes every poll; unchanged value + estimate flag
+    # must not cause a re-solve
+    w = make_watcher()
+    w.on_change(
+        "sensor.buy",
+        "0.44",
+        "0.44",
+        {"estimate": False, "forecast": [1]},
+        {"estimate": False, "forecast": [0]},
+    )
+    w.on_change(
+        "sensor.buy",
+        "0.44",
+        "0.44",
+        {"estimate": False, "forecast": [2]},
+        {"estimate": False, "forecast": [1]},
+    )
+    assert not w.trigger.is_set()
 
 
 def test_health_grace_period_then_degraded():

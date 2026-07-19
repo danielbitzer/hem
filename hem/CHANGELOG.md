@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Re-solve on every price change**: the $0.05 significance threshold is
+  gone — any change of the live buy/sell price (or its estimate flag)
+  triggers an early re-solve, so the plan and dashboard reflect the real
+  price within seconds of Amber confirming it instead of up to 5 minutes
+  later. A 5 s floor between event-driven solves guards against a flapping
+  sensor; the 5-minute boundary solve is unchanged. A spike_status flip on
+  the spike sensor now also triggers, even before its binary state turns on.
+- Dashboard: the Amber buy/sell tile is marked "forecast, unconfirmed" (with
+  an explanatory tooltip) while the solve used Amber's estimate for the
+  current interval — right at each 5-minute boundary, before the confirmed
+  price lands and the re-solve clears it.
+
 - **Vacation mode**: flatten the load forecast to a configured standby
   baseline while the household is away, freeing the whole battery for spikes
   and cheap windows. Enabled from a dialog at the top of Settings
