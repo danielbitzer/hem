@@ -123,7 +123,8 @@ export function VacationCard() {
             type="button"
             variant={active ? "default" : "outline"}
             className={
-              (active ? "rounded-md" : "rounded-md bg-secondary") + " max-sm:w-full"
+              (active ? "rounded-md" : "rounded-md bg-secondary") +
+              " max-sm:h-auto max-sm:w-full max-sm:whitespace-normal"
             }
             disabled={!config.data?.configured}
             onClick={openDialog}
