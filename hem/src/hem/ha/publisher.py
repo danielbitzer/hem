@@ -43,6 +43,21 @@ class Publisher:
             attrs.update(extra)
         await self._client.set_state("sensor.hem_status", status, attrs)
 
+    async def publish_vacation(self, vacation: dict | None) -> None:
+        """binary_sensor.hem_vacation_mode — HA-side visibility only (the
+        actuator deliberately does NOT read this; while on vacation HEM's own
+        plans already reflect the flat baseline)."""
+        attrs: dict[str, Any] = {
+            "friendly_name": "HEM vacation mode",
+            "icon": "mdi:palm-tree",
+        }
+        if vacation:
+            attrs["baseline_kw"] = vacation.get("baseline_kw")
+            attrs["until"] = vacation.get("until")
+        await self._client.set_state(
+            "binary_sensor.hem_vacation_mode", "on" if vacation else "off", attrs
+        )
+
     async def publish_plan(self, plan: Plan, capacity_kwh: float) -> None:
         """Publish the full dry-run sensor set (republished every cycle).
 

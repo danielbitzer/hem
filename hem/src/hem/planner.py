@@ -146,6 +146,9 @@ class CycleData:
     load_forecast_status: str = "learned"
     # how the model was learned (window, source, temp response) — dashboard
     load_forecast_info: dict = field(default_factory=dict)
+    # {baseline_kw, until} while vacation mode is active, else None — drives
+    # the dashboard banner and binary_sensor.hem_vacation_mode
+    vacation: dict | None = None
 
 
 class Planner:
@@ -220,6 +223,22 @@ class Planner:
         # before the feasibility clamp below.
         if (buffer := self._settings.load.buffer) > 0:
             load_kw = load_kw * (1.0 + buffer)
+        # Vacation mode: overlay the flat standby baseline (unbuffered — it's
+        # a deliberate number) over the steps the household is away; steps
+        # after `until` keep the learned+buffered forecast, so a return date
+        # inside the horizon already plans the real evening load.
+        vacation = self._settings.vacation
+        vacation_info: dict | None = None
+        if vacation.active(now, self._tz):
+            until_utc = vacation.until_utc(self._tz)
+            away = np.array(
+                [until_utc is None or s.start < until_utc for s in grid.steps]
+            )
+            load_kw = np.where(away, vacation.baseline_kw, load_kw)
+            vacation_info = {
+                "baseline_kw": vacation.baseline_kw,
+                "until": vacation.until.isoformat() if vacation.until else None,
+            }
         # Feasibility guard: the power balance can always serve load up to
         # import + PV (the battery may be empty, so its discharge doesn't
         # count); anything beyond that turns the MILP infeasible. Real load
@@ -278,6 +297,7 @@ class Planner:
                 if buffer > 0
                 else self._load_forecaster.details
             ),
+            vacation=vacation_info,
         )
 
     def _discharge_caps(self, steps: int, live_spike: bool) -> np.ndarray | None:

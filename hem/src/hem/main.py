@@ -113,11 +113,13 @@ async def cycle(
         "coverage": data.coverage,
         "load_forecast": data.load_forecast_status,
         "load_forecast_info": data.load_forecast_info,
+        "vacation": data.vacation,
     }
 
     # Publishing IS the output: the user's actuator automation (see
     # blueprints/hem_actuator.yaml) turns these sensors into inverter control.
     await publisher.publish_plan(plan, settings.battery.capacity_kwh)
+    await publisher.publish_vacation(data.vacation)
     await publisher.publish_status(
         "ok",
         last_solve=now,
