@@ -1,22 +1,37 @@
 import { useSyncExternalStore } from "react";
 import type { Action } from "./api";
 
+// Design 1A ("HA Cards") palette. Actions: charge = HA-blue accent,
+// discharge = purple action accent, idle = neutral segment grey. no_charge
+// and curtail aren't in the handoff's four-way legend; green (the design's
+// export colour — no_charge usually means PV surplus exporting instead of
+// charging) and amber (export held back) extend it in the same family.
 export const ACTION_COLORS: Record<Action, string> = {
-  charge: "#2e86de",
-  discharge: "#10ac84",
-  idle: "var(--muted-foreground)", // follows the theme, like the old .action-idle class
-  no_charge: "#8e44ad",
-  curtail: "#e67e22",
+  charge: "#3f7fd0",
+  discharge: "#8a52c9",
+  idle: "var(--seg-idle)",
+  no_charge: "#2fae7a",
+  curtail: "#efa63c",
 };
 
+// Series colours are theme-independent per the handoff.
 export const SERIES = {
-  buy: "#e74c3c",
-  sell: "#10ac84",
-  pv: "#f39c12",
-  load: "#8e8e93",
-  battery: "#2e86de",
-  gridImport: "#e74c3c",
-  gridExport: "#10ac84",
+  buy: "#e0563f",
+  sell: "#2fae7a",
+  pv: "#efa63c",
+  load: "#98a1ab",
+  battery: "#3f7fe0",
+  gridImport: "#e0563f",
+  gridExport: "#2fae7a",
+} as const;
+
+// Translucent area fills under stepped series (handoff MiniChart spec).
+export const SERIES_FILL = {
+  pv: "rgba(239,166,60,.16)",
+  battery: "rgba(63,127,224,.18)",
+  gridImport: "rgba(224,86,63,.14)",
+  gridExport: "rgba(47,174,122,.16)",
+  soc: "rgba(63,127,224,.14)",
 } as const;
 
 // Shared fixed y-axis gutter + right margin so every chart's plot area (and
@@ -27,6 +42,7 @@ export const SERIES = {
 export const GUTTER = 36;
 export const RIGHT_MARGIN = 16;
 export const CHART_MARGIN = { top: 8, right: RIGHT_MARGIN, bottom: 0, left: 0 };
+export const CHART_HEIGHT = 200;
 
 const query = window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -41,17 +57,18 @@ export function useDark(): boolean {
 }
 
 // SVG attributes can't resolve CSS variables, so chart strokes restate the
-// index.css palette (--border / --muted values) per theme — keep in sync.
+// index.css palette (--chart-grid / --muted-foreground values) per theme —
+// keep in sync.
 export function gridStroke(dark: boolean): string {
-  return dark ? "#2c2c30" : "#e3e3e8";
+  return dark ? "#222a38" : "#eceff3";
 }
 
 export function cursorStroke(dark: boolean): string {
-  return dark ? "#6e6e78" : "#90909a";
+  return dark ? "#8b96a6" : "#69727e";
 }
 
 export function idleSegmentColor(dark: boolean): string {
-  return dark ? "#5c5c66" : "#c8c8cd";
+  return dark ? "#2a3242" : "#d6dbe1";
 }
 
 export function fmtDayTime(ms: number): string {

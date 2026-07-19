@@ -1,66 +1,76 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
 
 /* HA ingress can't set a .dark class — dark mode follows the OS/browser
    preference, so the dark: variant is bound to the media query. */
 @custom-variant dark (@media (prefers-color-scheme: dark));
 
+/* Design: claude.ai/design "Home Assistant add-on interface", direction 1A
+   ("HA Cards") — mirrors HA's native card look: soft grey canvas, white
+   cards, HA-blue accent, purple action accent. The dark palette is the
+   handoff's 1C ("Nightwatch") neutrals carrying 1A's accents. */
 :root {
   color-scheme: light dark;
-  --background: oklch(0.97 0.001 286);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  --background: #f4f6f8;
+  --foreground: #1a2028;
+  --card: #ffffff;
+  --card-foreground: #1a2028;
+  --popover: #ffffff;
+  --popover-foreground: #1a2028;
+  --primary: oklch(0.6 0.14 250); /* HA blue — accent / charge */
+  --primary-foreground: #ffffff;
+  --secondary: #f7f9fb; /* card2: inset fields */
+  --secondary-foreground: #1a2028;
+  --muted: #f7f9fb;
+  --muted-foreground: #69727e;
+  --accent: #f7f9fb;
+  --accent-foreground: #1a2028;
+  --destructive: #e0563f;
+  --border: #e5e9ef;
+  --input: #e5e9ef;
+  --ring: oklch(0.6 0.14 250);
+  --radius: 12px;
+  /* HEM-specific tokens from the handoff */
+  --action: oklch(0.55 0.17 300); /* purple — discharge / hero action */
+  --chart-grid: #eceff3;
+  --tab-bg: #eceff3;
+  --seg-idle: #d6dbe1;
+  --card-shadow: 0 1px 3px rgba(20, 30, 55, 0.07);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
+    --background: #0f1218;
+    --foreground: #e7ecf2;
+    --card: #161b24;
+    --card-foreground: #e7ecf2;
+    --popover: #161b24;
+    --popover-foreground: #e7ecf2;
+    --primary: oklch(0.68 0.14 250);
+    --primary-foreground: #ffffff;
+    --secondary: #1b212c;
+    --secondary-foreground: #e7ecf2;
+    --muted: #1b212c;
+    --muted-foreground: #8b96a6;
+    --accent: #1b212c;
+    --accent-foreground: #e7ecf2;
+    --destructive: #e0563f;
+    --border: #242c39;
+    --input: #242c39;
+    --ring: oklch(0.68 0.14 250);
+    --action: oklch(0.66 0.17 300);
+    --chart-grid: #222a38;
+    --tab-bg: #1b212c;
+    --seg-idle: #2a3242;
+    --card-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
   }
 }
 
 @theme inline {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-heading: var(--font-sans);
-  --font-sans: "Geist Variable", sans-serif;
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -79,18 +89,19 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  --color-action: var(--action);
+  --color-chart-grid: var(--chart-grid);
+  --color-tab-bg: var(--tab-bg);
+  --color-seg-idle: var(--seg-idle);
+  /* handoff radius scale: cards 12, buttons 10, inputs/pickers 9 */
+  --radius-sm: 7px;
+  --radius-md: 9px;
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --shadow-card: var(--card-shadow);
 }
 
 @layer base {
@@ -101,7 +112,19 @@
     @apply font-sans;
   }
   body {
-    @apply bg-background text-foreground m-0 p-4 text-sm;
+    @apply bg-background text-foreground m-0 text-sm;
     line-height: 1.45;
+  }
+}
+
+@layer base {
+  /* inline entity/sensor id chips (handoff: mono, inset bg, 4px radius) */
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
   }
 }

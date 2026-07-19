@@ -2,10 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { type ConfigResponse, fetchConfig, fetchPlanOrExplain, type PlanResponse } from "./api";
 import { BatteryChart, ForecastChart, PricesChart, type Row, SocChart } from "./charts";
-import { Button } from "./components/ui/button";
 import { ModeStrip } from "./ModeStrip";
 import { SettingsView } from "./settings/SettingsView";
-import { Tiles } from "./Tiles";
+import { Hero, Stats } from "./Tiles";
+import { fmtTime } from "./theme";
 
 const REFRESH_MS = 60_000;
 
@@ -20,6 +20,12 @@ export function App() {
     queryFn: fetchConfig,
     refetchInterval: 30_000,
   });
+  const plan = useQuery<PlanResponse>({
+    queryKey: ["plan"],
+    queryFn: fetchPlanOrExplain,
+    refetchInterval: REFRESH_MS,
+    retry: false,
+  });
   // A fresh install lands (and STAYS — hence pinning it as the chosen view,
   // or the first successful save would yank the user to the dashboard) in
   // Settings; once the user navigates, their choice wins.
@@ -31,34 +37,66 @@ export function App() {
   const view: View = chosenView ?? "dashboard";
 
   return (
-    <div>
-      <header className="mb-4 flex items-start justify-between gap-4">
-        <h1 className="text-lg font-bold">Home Energy Manager</h1>
-        <nav className="flex gap-1.5">
+    <div className="mx-auto min-h-screen max-w-[960px]">
+      <header className="flex items-start justify-between gap-4 border-b border-border bg-card px-[22px] py-[18px]">
+        <div className="min-w-0">
+          <h1 className="text-[17px] font-bold text-foreground">Home Energy Manager</h1>
+          {plan.data && (
+            <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+              {metaLine(plan.data)}
+            </div>
+          )}
+          {plan.data && loadForecastLine(plan.data) && (
+            <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+              {loadForecastLine(plan.data)}
+            </div>
+          )}
+          {plan.error && (
+            <div className="mt-1 text-xs text-destructive">{plan.error.message}</div>
+          )}
+        </div>
+        <nav className="flex shrink-0 gap-[3px] rounded-full bg-tab-bg p-[3px]">
           {(["dashboard", "settings"] as const).map((v) => (
-            <Button
+            <button
               key={v}
-              size="sm"
-              variant={view === v ? "default" : "ghost"}
+              type="button"
               aria-current={view === v ? "page" : undefined}
               onClick={() => setChosenView(v)}
+              className={
+                "cursor-pointer rounded-full border-none px-4 py-[7px] text-[13px] font-semibold transition-all " +
+                (view === v
+                  ? "bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.12)]"
+                  : "bg-transparent text-muted-foreground hover:text-foreground")
+              }
             >
               {v === "dashboard" ? "Dashboard" : "Settings"}
-            </Button>
+            </button>
           ))}
         </nav>
       </header>
-      {view === "settings" ? <SettingsView /> : <Dashboard config={config.data} />}
+      <main className="flex flex-col gap-3.5 p-5">
+        {view === "settings" ? (
+          <SettingsView />
+        ) : (
+          <Dashboard config={config.data} plan={plan.data} />
+        )}
+      </main>
     </div>
   );
 }
 
-function metaLine(plan: PlanResponse, tEnd: number): string {
-  const computed = new Date(plan.computed_at).toLocaleString();
-  let text = `computed ${computed} · ${plan.solver_status} · ${Math.round(plan.solve_ms)} ms · ${plan.intervals.length} intervals`;
+function metaLine(plan: PlanResponse): string {
+  const last = plan.intervals[plan.intervals.length - 1];
+  const horizonH =
+    plan.intervals.length && last
+      ? Math.round((Date.parse(last.end) - Date.parse(plan.intervals[0]!.start)) / 3_600_000)
+      : 0;
+  let text =
+    `computed ${fmtTime(Date.parse(plan.computed_at))} · ${plan.solver_status} · ` +
+    `${Math.round(plan.solve_ms)} ms · ${plan.intervals.length} intervals · horizon ${horizonH} h`;
   const fcEnd = plan.meta.price_forecast_end;
-  if (fcEnd && Date.parse(fcEnd) < tEnd) {
-    text += ` · price forecast ends ${new Date(fcEnd).toLocaleString()} (tail is held flat)`;
+  if (fcEnd && last && Date.parse(fcEnd) < Date.parse(last.end)) {
+    text += ` · price forecast ends ${fmtTime(Date.parse(fcEnd))}`;
   }
   return text;
 }
@@ -68,11 +106,9 @@ function loadForecastLine(plan: PlanResponse): string | null {
   if (plan.meta.load_forecast !== "learned" || !lf?.window_days) return null;
   const days = Math.max(1, Math.round(lf.window_days));
   let text =
-    `load forecast: learned from ${days} day${days === 1 ? "" : "s"} of ` +
-    `${lf.source} (${lf.load_entity}) · ${lf.buckets} hour buckets`;
+    `load forecast: ${days} day${days === 1 ? "" : "s"} of ${lf.source} (${lf.load_entity})`;
   text += lf.temp_response
-    ? ` · temperature response from ${lf.temp_entity} — up to ` +
-      `${lf.heat_kw_per_deg} kW/°C heating, ${lf.cool_kw_per_deg} kW/°C cooling`
+    ? ` · temp response ${lf.heat_kw_per_deg} kW/°C heat, ${lf.cool_kw_per_deg} kW/°C cool`
     : " · no temperature response";
   if (lf.buffer) text += ` · +${Math.round(lf.buffer * 100)}% buffer`;
   return text;
@@ -105,21 +141,18 @@ function lifecycleBanner(config: ConfigResponse | undefined): string | null {
         "in self-consumption. Enable it in Settings.";
 }
 
-function Dashboard({ config }: { config: ConfigResponse | undefined }) {
-  // On error the last good plan stays rendered with the error line above it.
-  // Structural sharing keeps object identity for unchanged payloads, so quiet
-  // polls don't re-render the charts. (No useMemo below: the React Compiler
-  // memoizes these derivations.)
-  const { data: plan, error: queryError } = useQuery<PlanResponse>({
-    queryKey: ["plan"],
-    queryFn: fetchPlanOrExplain,
-    refetchInterval: REFRESH_MS,
-    retry: false,
-  });
-  const error = queryError ? queryError.message : null;
+function Dashboard({
+  config,
+  plan,
+}: {
+  config: ConfigResponse | undefined;
+  plan: PlanResponse | undefined;
+}) {
   const banner = lifecycleBanner(config);
 
   // Parse interval timestamps exactly once; every child works from Row.
+  // (No useMemo: the React Compiler memoizes these derivations; TanStack
+  // Query's structural sharing keeps identity stable on quiet polls.)
   const rows: Row[] = (plan?.intervals ?? []).map((iv) => ({
     t: Date.parse(iv.start),
     end: Date.parse(iv.end),
@@ -143,9 +176,7 @@ function Dashboard({ config }: { config: ConfigResponse | undefined }) {
     return (
       <div>
         {banner && <Banner text={banner} />}
-        <div className="p-6 text-center">
-          {error ? <span className="text-[#c0392b]">{error}</span> : "loading…"}
-        </div>
+        <div className="p-6 text-center text-muted-foreground">loading…</div>
       </div>
     );
   }
@@ -157,33 +188,28 @@ function Dashboard({ config }: { config: ConfigResponse | undefined }) {
   }
   const domain: [number, number] = [first.t, last.end];
   const fcEnd = plan.meta.price_forecast_end ? Date.parse(plan.meta.price_forecast_end) : null;
-  const loadLine = loadForecastLine(plan);
   const warning = warningText(plan);
   const vacation = vacationBanner(plan);
 
   return (
-    <div>
-      <div className="mb-4">
-        <div className="text-muted-foreground text-xs">{metaLine(plan, domain[1])}</div>
-        {loadLine && <div className="text-muted-foreground mt-1 text-xs">{loadLine}</div>}
-        {error && <div className="mt-1 text-xs text-[#c0392b]">{error}</div>}
-      </div>
+    <>
       {banner && <Banner text={banner} />}
       {vacation && <Banner text={vacation} />}
       {warning && <Banner text={warning} />}
-      <Tiles plan={plan} rows={rows} />
+      <Hero plan={plan} rows={rows} />
+      <Stats plan={plan} rows={rows} />
       <PricesChart rows={chartRows} domain={domain} forecastEnd={fcEnd} />
       <ForecastChart rows={chartRows} domain={domain} />
       <ModeStrip rows={rows} domain={domain} />
       <BatteryChart rows={chartRows} domain={domain} />
       <SocChart rows={chartRows} domain={domain} capacity={plan.meta.capacity_kwh ?? null} />
-    </div>
+    </>
   );
 }
 
 function Banner({ text }: { text: string }) {
   return (
-    <div className="mb-3.5 rounded-xl border border-[#e67e22] bg-[#e67e22]/10 px-3.5 py-2.5 text-[13px]">
+    <div className="rounded-lg border border-[#efa63c] bg-[#efa63c]/10 px-3.5 py-2.5 text-[13px]">
       {text}
     </div>
   );

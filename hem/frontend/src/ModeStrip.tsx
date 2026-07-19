@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Card, type Row, TooltipPanel } from "./charts";
+import { Card, LegendRow, type Row, TooltipPanel } from "./charts";
 import { useHoverT } from "./hover";
 import {
   ACTION_COLORS,
@@ -53,7 +53,20 @@ export function ModeStrip({ rows, domain }: { rows: Row[]; domain: [number, numb
   const cursorPct = hoverT !== null && hoverT >= t0 && hoverT <= tEnd ? pct(hoverT) : null;
 
   return (
-    <Card title="Planned mode">
+    <Card
+      title="Planned mode"
+      right={
+        <LegendRow
+          items={[
+            { label: "charge", color: ACTION_COLORS.charge },
+            { label: "discharge", color: ACTION_COLORS.discharge },
+            { label: "no charge", color: ACTION_COLORS.no_charge },
+            { label: "idle", color: idleSegmentColor(dark) },
+            { label: "curtail", color: ACTION_COLORS.curtail },
+          ]}
+        />
+      }
+    >
       <div style={{ paddingLeft: GUTTER, paddingRight: RIGHT_MARGIN }}>
         <div
           className="relative h-7"
@@ -66,20 +79,22 @@ export function ModeStrip({ rows, domain }: { rows: Row[]; domain: [number, numb
           }}
           onMouseLeave={() => setLocal(null)}
         >
-          {segments.map((seg) => (
-            <div
-              key={seg.startMs}
-              className="absolute top-1 bottom-1 rounded-[3px]"
-              style={{
-                left: `${pct(seg.startMs)}%`,
-                width: `${pct(seg.endMs) - pct(seg.startMs)}%`,
-                background:
-                  seg.action === "idle"
-                    ? idleSegmentColor(dark)
-                    : (ACTION_COLORS[seg.action as keyof typeof ACTION_COLORS] ?? "#8e8e93"),
-              }}
-            />
-          ))}
+          <div className="absolute inset-0 overflow-hidden rounded-[7px] border border-border">
+            {segments.map((seg) => (
+              <div
+                key={seg.startMs}
+                className="absolute top-0 bottom-0"
+                style={{
+                  left: `${pct(seg.startMs)}%`,
+                  width: `${pct(seg.endMs) - pct(seg.startMs)}%`,
+                  background:
+                    seg.action === "idle"
+                      ? idleSegmentColor(dark)
+                      : (ACTION_COLORS[seg.action as keyof typeof ACTION_COLORS] ?? "#98a1ab"),
+                }}
+              />
+            ))}
+          </div>
           {cursorPct !== null && (
             <div
               className="pointer-events-none absolute top-0 bottom-0 border-l border-dashed"

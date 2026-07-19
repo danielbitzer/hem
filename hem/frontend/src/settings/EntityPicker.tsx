@@ -46,7 +46,7 @@ export function EntityPicker({ value, onChange, entities, domains, optional, inv
           role="combobox"
           aria-expanded={open}
           aria-invalid={invalid || undefined}
-          className="w-full justify-between font-normal"
+          className="h-auto w-full justify-between rounded-md bg-secondary px-[13px] py-[11px] text-[13px] font-normal"
         >
           {value ? (
             <span className="truncate">

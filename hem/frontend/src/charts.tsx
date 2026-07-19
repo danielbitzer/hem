@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import type { Action } from "./api";
 import {
+  CHART_HEIGHT,
   CHART_MARGIN,
   cursorStroke,
   fmtDayTime,
@@ -19,6 +20,7 @@ import {
   GUTTER,
   gridStroke,
   SERIES,
+  SERIES_FILL,
   useDark,
 } from "./theme";
 import { setHoverT } from "./hover";
@@ -51,12 +53,12 @@ function makeTicks(t0: number, tEnd: number, stepHours = 2): number[] {
   return ticks;
 }
 
-function LegendRow({ items }: { items: { label: string; color: string }[] }) {
+export function LegendRow({ items }: { items: { label: string; color: string }[] }) {
   return (
-    <div className="mb-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
       {items.map(({ label, color }) => (
         <span key={label} className="inline-flex items-center gap-1.5">
-          <span className="size-2.5 rounded-full" style={{ background: color }} />
+          <span className="size-[9px] rounded-[2px]" style={{ background: color }} />
           {label}
         </span>
       ))}
@@ -104,10 +106,21 @@ function ChartTip({
   );
 }
 
-export function Card({ title, children }: { title: string; children: ReactNode }) {
+export function Card({
+  title,
+  right,
+  children,
+}: {
+  title: string;
+  right?: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <div className="mb-3.5 rounded-xl border border-border bg-card p-3">
-      <h2 className="mb-1 text-[13px] font-semibold text-muted-foreground">{title}</h2>
+    <div className="shadow-card rounded-lg border border-border bg-card px-[18px] pt-[18px] pb-3.5">
+      <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        {right}
+      </div>
       {children}
     </div>
   );
@@ -127,7 +140,7 @@ interface HemChartProps {
 export function HemChart({
   data,
   domain,
-  height = 220,
+  height = CHART_HEIGHT,
   yTickFormat,
   yDomain,
   format,
@@ -153,7 +166,7 @@ export function HemChart({
           domain={domain}
           ticks={makeTicks(domain[0], domain[1])}
           tickFormatter={fmtTime}
-          tick={{ fontSize: 11 }}
+          tick={{ fontSize: 11, fontFamily: MONO, fill: mutedTick(dark) }}
           tickLine={false}
           axisLine={{ stroke: gridStroke(dark) }}
         />
@@ -161,7 +174,7 @@ export function HemChart({
           width={GUTTER}
           domain={yDomain}
           tickFormatter={yTickFormat}
-          tick={{ fontSize: 11 }}
+          tick={{ fontSize: 11, fontFamily: MONO, fill: mutedTick(dark) }}
           tickLine={false}
           axisLine={false}
         />
@@ -175,6 +188,9 @@ export function HemChart({
     </ResponsiveContainer>
   );
 }
+
+const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
+const mutedTick = (dark: boolean) => (dark ? "#8b96a6" : "#69727e");
 
 const kw = (_: string, v: number) => `${v.toFixed(2)} kW`;
 const dollars = (_: string, v: number) => `$${v.toFixed(3)}`;
@@ -191,13 +207,17 @@ export function PricesChart({
   const dark = useDark();
   const padded = forecastEnd !== null && forecastEnd < domain[1];
   return (
-    <Card title="Prices $/kWh (buy / sell)">
-      <LegendRow
-        items={[
-          { label: "buy", color: SERIES.buy },
-          { label: "sell", color: SERIES.sell },
-        ]}
-      />
+    <Card
+      title="Prices $/kWh (buy / sell)"
+      right={
+        <LegendRow
+          items={[
+            { label: "buy", color: SERIES.buy },
+            { label: "sell", color: SERIES.sell },
+          ]}
+        />
+      }
+    >
       <HemChart data={rows} domain={domain} yTickFormat={(v) => v.toFixed(2)} format={dollars}>
         {padded && (
           <ReferenceArea
@@ -216,7 +236,7 @@ export function PricesChart({
             }}
           />
         )}
-        <Line dataKey="buy" name="buy" type="stepAfter" stroke={SERIES.buy} strokeWidth={2} dot={false} isAnimationActive={false} />
+        <Line dataKey="buy" name="buy" type="stepAfter" stroke={SERIES.buy} strokeWidth={2.2} dot={false} isAnimationActive={false} />
         <Line dataKey="sell" name="sell" type="stepAfter" stroke={SERIES.sell} strokeWidth={2} dot={false} isAnimationActive={false} />
       </HemChart>
     </Card>
@@ -225,15 +245,19 @@ export function PricesChart({
 
 export function ForecastChart({ rows, domain }: { rows: Row[]; domain: [number, number] }) {
   return (
-    <Card title="Forecast kW (PV / load)">
-      <LegendRow
-        items={[
-          { label: "PV", color: SERIES.pv },
-          { label: "load", color: SERIES.load },
-        ]}
-      />
+    <Card
+      title="Forecast kW (PV / load)"
+      right={
+        <LegendRow
+          items={[
+            { label: "PV", color: SERIES.pv },
+            { label: "load", color: SERIES.load },
+          ]}
+        />
+      }
+    >
       <HemChart data={rows} domain={domain} yTickFormat={(v) => v.toFixed(0)} format={kw}>
-        <Line dataKey="pv" name="PV" type="stepAfter" stroke={SERIES.pv} strokeWidth={2} dot={false} isAnimationActive={false} />
+        <Area dataKey="pv" name="PV" type="stepAfter" stroke={SERIES.pv} strokeWidth={2} fill={SERIES_FILL.pv} fillOpacity={1} isAnimationActive={false} />
         <Line dataKey="load" name="load" type="stepAfter" stroke={SERIES.load} strokeWidth={2} dot={false} isAnimationActive={false} />
       </HemChart>
     </Card>
@@ -242,18 +266,22 @@ export function ForecastChart({ rows, domain }: { rows: Row[]; domain: [number, 
 
 export function BatteryChart({ rows, domain }: { rows: Row[]; domain: [number, number] }) {
   return (
-    <Card title="Planned battery power kW (+charge / −discharge) & grid flows">
-      <LegendRow
-        items={[
-          { label: "battery", color: SERIES.battery },
-          { label: "import", color: SERIES.gridImport },
-          { label: "export", color: SERIES.gridExport },
-        ]}
-      />
+    <Card
+      title="Planned battery power kW (+charge / −discharge) & grid flows"
+      right={
+        <LegendRow
+          items={[
+            { label: "battery", color: SERIES.battery },
+            { label: "import", color: SERIES.gridImport },
+            { label: "export", color: SERIES.gridExport },
+          ]}
+        />
+      }
+    >
       <HemChart data={rows} domain={domain} yTickFormat={(v) => v.toFixed(0)} format={kw}>
-        <Area dataKey="battery" name="battery" type="stepAfter" stroke={SERIES.battery} strokeWidth={2} fill={SERIES.battery} fillOpacity={0.3} isAnimationActive={false} />
-        <Area dataKey="gridImport" name="import" type="stepAfter" stroke={SERIES.gridImport} strokeWidth={2} fill={SERIES.gridImport} fillOpacity={0.18} isAnimationActive={false} />
-        <Area dataKey="gridExport" name="export" type="stepAfter" stroke={SERIES.gridExport} strokeWidth={2} fill={SERIES.gridExport} fillOpacity={0.18} isAnimationActive={false} />
+        <Area dataKey="gridExport" name="export" type="stepAfter" stroke={SERIES.gridExport} strokeWidth={1.8} fill={SERIES_FILL.gridExport} fillOpacity={1} isAnimationActive={false} />
+        <Area dataKey="gridImport" name="import" type="stepAfter" stroke={SERIES.gridImport} strokeWidth={1.8} fill={SERIES_FILL.gridImport} fillOpacity={1} isAnimationActive={false} />
+        <Area dataKey="battery" name="battery" type="stepAfter" stroke={SERIES.battery} strokeWidth={2.2} fill={SERIES_FILL.battery} fillOpacity={1} isAnimationActive={false} />
       </HemChart>
     </Card>
   );
@@ -279,7 +307,7 @@ export function SocChart({
         yDomain={capacity ? [0, capacity] : undefined}
         format={format}
       >
-        <Area dataKey="soc" name="SoC" type="monotone" stroke={SERIES.battery} strokeWidth={2} fill={SERIES.battery} fillOpacity={0.12} isAnimationActive={false} />
+        <Area dataKey="soc" name="SoC" type="stepAfter" stroke={SERIES.battery} strokeWidth={2.2} fill={SERIES_FILL.soc} fillOpacity={1} isAnimationActive={false} />
       </HemChart>
     </Card>
   );

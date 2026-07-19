@@ -280,7 +280,7 @@ function FieldRow({
   entities: Entity[];
 }) {
   return (
-    <div className="grid gap-1.5 py-3 sm:grid-cols-[230px_minmax(0,1fr)] sm:gap-x-6">
+    <div className="grid gap-1.5 py-3 sm:grid-cols-[210px_minmax(0,1fr)] sm:gap-x-6">
       <Label className="pt-1.5 leading-snug">
         {spec.label}
         {spec.required && <span className="text-destructive"> *</span>}
@@ -300,7 +300,7 @@ function FieldRow({
         {(spec.kind === "number" || spec.kind === "text" || spec.kind === "time") && (
           <Input
             type={spec.kind === "text" ? "text" : spec.kind}
-            className="w-44"
+            className="h-auto w-40 rounded-md bg-secondary px-[13px] py-2.5 font-mono text-sm"
             value={String(value)}
             placeholder={typeof spec.default === "string" ? spec.default : undefined}
             min={spec.min}
