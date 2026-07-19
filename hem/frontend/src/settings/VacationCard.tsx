@@ -178,21 +178,23 @@ export function VacationCard() {
             <div className="grid gap-1.5">
               <Label htmlFor="vacation-until">Ends</Label>
               <div className="flex items-center gap-2">
-                <Input
-                  id="vacation-until"
-                  type="datetime-local"
-                  className="w-56"
-                  value={untilValue}
-                  onChange={(e) => setUntil(e.target.value)}
-                />
                 {untilValue ? (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setUntil("")}>
-                    No end time
-                  </Button>
+                  <>
+                    <Input
+                      id="vacation-until"
+                      type="datetime-local"
+                      className="w-56"
+                      value={untilValue}
+                      onChange={(e) => setUntil(e.target.value)}
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={() => setUntil("")}>
+                      No end time
+                    </Button>
+                  </>
                 ) : (
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => setUntil(suggestedUntil())}
                   >
