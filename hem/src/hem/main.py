@@ -1,9 +1,10 @@
 """Entrypoint: 5-minute cycle scheduler + health/ingress web server.
 
 Each cycle runs the full planner pipeline (gather -> solve -> publish -> record).
-A WebSocket watcher triggers an early re-solve when the Amber price moves
-significantly or the spike sensor flips — that's how a confirmed spike gets a
-full-power discharge decision within seconds instead of at the next tick.
+A WebSocket watcher triggers an early re-solve on ANY change of the Amber
+price sensors (value, estimate flag, or spike status) — that's how a
+confirmed price or spike reaches the plan within seconds instead of at the
+next 5-minute tick.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import math
 import os
 import signal
 import time
@@ -39,11 +41,14 @@ log = logging.getLogger("hem")
 CYCLE_SECONDS = 300
 WEB_PORT = 8099
 EVENT_DEBOUNCE_S = 2  # buy+sell arrive together; just soak up that burst
-# Floor between EVENT-driven re-solves (boundary solves unaffected): a solve
-# is ~50 ms, so this is not about cost — it stops a flapping sensor (e.g.
-# unavailable churn) from spinning the loop. Amber's confirmed price lands
-# well past this after the boundary solve, so the normal case is undelayed.
-MIN_EVENT_SOLVE_GAP_S = 15
+# Floor between EVENT-driven re-solves (boundary solves are unaffected, and
+# events never floor against a boundary solve): a solve is ~50 ms, so this is
+# not about cost — it stops a flapping sensor (e.g. unavailable churn) from
+# spinning the loop. Kept small: an interval typically produces two closely
+# spaced events (estimate roll, then confirmation seconds later) and the
+# confirming solve must not be held back — "the plan reflects the confirmed
+# price within seconds" is the whole point.
+MIN_EVENT_SOLVE_GAP_S = 5
 WS_RECONNECT_BACKOFF_S = 30
 
 
@@ -67,7 +72,11 @@ class PriceWatcher:
 
     @staticmethod
     def _key(state: str, attrs: dict | None) -> str:
-        return f"{state}|{(attrs or {}).get('estimate')}"
+        # spike_status included because _spike_active() treats
+        # spike_status == "spike" as live even while the binary state is
+        # still "off" — that flip alone must re-solve too.
+        a = attrs or {}
+        return f"{state}|{a.get('estimate')}|{a.get('spike_status')}"
 
     def on_change(
         self,
@@ -110,6 +119,7 @@ async def cycle(
     data = await planner.gather(now)
     # The solve is synchronous CVXPY/HiGHS — run off the event loop so /health,
     # the WS watcher, and the dashboard stay responsive during long solves.
+    fallback = False
     try:
         plan = await asyncio.to_thread(planner.optimize, data, now)
     except SolverError as e:
@@ -117,6 +127,7 @@ async def cycle(
         # failed cycle (degraded status via the caller's handler)
         log.error("solver failed: %s; falling back to the previous plan", e)
         plan = planner.fallback(now)
+        fallback = True
     planner.previous_plan = plan
     step0 = plan.intervals[0]
     forecast_end = data.price_forecast_end.isoformat() if data.price_forecast_end else None
@@ -132,8 +143,14 @@ async def cycle(
         "vacation": data.vacation,
         # step-0 prices are Amber's estimate, not yet AEMO-confirmed — the
         # dashboard marks the price tile; the estimate->confirmed sensor
-        # update triggers a re-solve that clears this within seconds.
-        "prices_estimated": data.prices.current_estimate,
+        # update triggers a re-solve that clears this within seconds. On a
+        # solver-failure fallback the tile shows the PREVIOUS plan's prices,
+        # so the marker keeps the flag from the solve those prices came from.
+        "prices_estimated": (
+            app_state.meta.get("prices_estimated", False)
+            if fallback
+            else data.prices.current_estimate
+        ),
     }
 
     # Publishing IS the output: the user's actuator automation (see
@@ -193,9 +210,12 @@ async def _run_planner(
     watcher = PriceWatcher(settings)
     watcher_task = asyncio.create_task(watcher.run(client))
 
+    # Flap floor bookkeeping: EVENT-driven solves only. Floored against the
+    # boundary solve it would delay the routine estimate->confirmed re-solve
+    # (which lands seconds after every boundary) by the full floor.
+    last_event_solve = -math.inf
     try:
         while not controller.changed.is_set():
-            solve_started = time.monotonic()
             try:
                 async with asyncio.timeout(90):
                     await cycle(planner, publisher, settings, app_state)
@@ -213,8 +233,8 @@ async def _run_planner(
                 with contextlib.suppress(Exception):
                     await publisher.publish_status("degraded", detail=str(e))
 
-            # Wake on: the 5-min boundary, a significant price move, or a
-            # config change from the Settings UI — whichever comes first.
+            # Wake on: the 5-min boundary, any price change, or a config
+            # change from the Settings UI — whichever comes first.
             delay = seconds_to_next_boundary(time.time())
             price_wait = asyncio.create_task(watcher.trigger.wait())
             config_wait = asyncio.create_task(controller.changed.wait())
@@ -237,10 +257,14 @@ async def _run_planner(
             watcher.trigger.clear()
             if price_wait in done:
                 await asyncio.sleep(EVENT_DEBOUNCE_S)  # coalesce price bursts
-                # flap floor: never let events re-solve more often than this
-                gap = MIN_EVENT_SOLVE_GAP_S - (time.monotonic() - solve_started)
+                # Flap floor between event-driven solves — but never sleep
+                # past the 5-min boundary (the event solve then doubles as
+                # the boundary solve instead of delaying it).
+                gap = MIN_EVENT_SOLVE_GAP_S - (time.monotonic() - last_event_solve)
+                gap = min(gap, seconds_to_next_boundary(time.time()))
                 if gap > 0:
                     await asyncio.sleep(gap)
+                last_event_solve = time.monotonic()
     finally:
         watcher_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):

@@ -70,6 +70,20 @@ def test_watcher_estimate_flip_at_same_value_triggers():
     assert w.trigger.is_set()
 
 
+def test_watcher_spike_status_flip_triggers_without_state_change():
+    # _spike_active treats spike_status == "spike" as live even while the
+    # binary sensor state is still "off" — that flip alone must re-solve
+    w = make_watcher()
+    w.on_change(
+        "binary_sensor.spike", "off", "off", {"spike_status": "none"}, {"spike_status": "none"}
+    )
+    assert not w.trigger.is_set()
+    w.on_change(
+        "binary_sensor.spike", "off", "off", {"spike_status": "spike"}, {"spike_status": "none"}
+    )
+    assert w.trigger.is_set()
+
+
 def test_watcher_attribute_noise_does_not_trigger():
     # the forecast list refreshes every poll; unchanged value + estimate flag
     # must not cause a re-solve
