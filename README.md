@@ -132,6 +132,12 @@ or via Docker, from the **repo root**: `docker compose -f docker-compose.dev.yml
 (reads `HEM_HA_URL`/`HEM_HA_TOKEN` from your shell environment or a repo-root
 `.env`; note the standalone run above uses `hem/.env` instead).
 
+The local timezone anchors the learned load buckets, the daily SoC target
+and vacation end times. Under the Supervisor it comes from the `TZ` env var
+automatically; in dev it's auto-detected from `/etc/localtime`, or set it
+explicitly with `HEM_TZ=Australia/Adelaide` (env or `hem/.env`). The
+resolved zone is logged at startup.
+
 Configure via the web UI at `http://localhost:8099` (Settings). Note the dev
 server has **no authentication** — anyone on your LAN who can reach :8099 can
 read and edit the config. Under the Supervisor this doesn't apply (ingress

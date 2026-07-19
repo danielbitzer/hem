@@ -40,6 +40,10 @@ class EnvSettings(BaseSettings):
     ha_token: str = ""  # HEM_HA_TOKEN, standalone only
     config_file: Path | None = None  # HEM_CONFIG_FILE, overrides the hem-config.json path
     log_level: str = ""  # HEM_LOG_LEVEL, overrides options log_level when set
+    # HEM_TZ: explicit local timezone (e.g. Australia/Adelaide), wins over the
+    # TZ env var and system detection. Works from hem/.env, unlike TZ (dotenv
+    # values are read by pydantic-settings, not exported to os.environ).
+    tz: str = ""
 
 
 @dataclass(frozen=True)

@@ -30,7 +30,7 @@ async def main() -> None:
     if settings is None:
         raise SystemExit(f"no valid config at {store.path} — configure HEM in the web UI first")
     conn = resolve_connection(env)
-    tz = default_timezone()
+    tz = default_timezone(env.tz)
     now = datetime.now(UTC)
 
     async with HaClient(conn) as client:

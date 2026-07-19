@@ -365,9 +365,13 @@ def test_default_timezone_falls_back_to_system_zone(tmp_path, monkeypatch):
     assert str(_zone_from_localtime(str(link))) == "Australia/Adelaide"
     assert _zone_from_localtime(str(tmp_path / "nope")) is None
 
-    # TZ env always wins
+    # precedence: explicit HEM_TZ > TZ env > system zone
     monkeypatch.setenv("TZ", "Australia/Sydney")
     assert str(default_timezone()) == "Australia/Sydney"
+    assert str(default_timezone("Australia/Adelaide")) == "Australia/Adelaide"
     # without TZ we get SOME real zone (system) or UTC — never a crash
     monkeypatch.delenv("TZ")
     assert default_timezone() is not None
+    # an explicit-but-wrong zone fails loudly, it exists to remove ambiguity
+    with pytest.raises(RuntimeError, match="HEM_TZ"):
+        default_timezone("Adelaide")
