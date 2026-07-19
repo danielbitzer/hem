@@ -114,13 +114,12 @@ export function Stats({ plan, rows }: { plan: PlanResponse; rows: Row[] }) {
   const step0 = rows[0];
   const last = rows[rows.length - 1];
   if (!step0 || !last) return null;
-  const cap = plan.meta.capacity_kwh;
   const horizonH = Math.round((last.end - step0.t) / 3_600_000);
   const loadKwh = rows.reduce((sum, r) => sum + (r.load * (r.end - r.t)) / 3_600_000, 0);
   const cost = plan.objective_cost;
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <Stat
         label="Amber buy / sell"
         value={
@@ -138,11 +137,6 @@ export function Stats({ plan, rows }: { plan: PlanResponse; rows: Row[] }) {
               "confirmed price lands."
             : undefined
         }
-      />
-      <Stat
-        label="SoC target"
-        value={cap ? `${((100 * step0.soc) / cap).toFixed(0)}% · ${step0.soc.toFixed(1)}` : step0.soc.toFixed(1)}
-        sub="kWh, end of interval"
       />
       <Stat
         label="Horizon cost"
