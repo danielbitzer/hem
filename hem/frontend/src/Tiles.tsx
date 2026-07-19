@@ -1,5 +1,6 @@
 import type { PlanResponse } from "./api";
 import type { Row } from "./charts";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./components/ui/tooltip";
 import { ACTION_COLORS, fmtTime } from "./theme";
 
 const HORIZON_COST_HELP =
@@ -27,12 +28,20 @@ function Tile({
       <div className="text-[11px] tracking-wider text-muted-foreground uppercase">
         {label}
         {help && (
-          <span
-            title={help}
-            className="ml-1.5 inline-block size-[13px] cursor-help rounded-full border border-muted text-center text-[9px] leading-3 normal-case"
-          >
-            ?
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={`About ${label}`}
+                className="ml-1.5 inline-block size-[13px] cursor-help rounded-full border border-muted-foreground/50 text-center text-[9px] leading-3 normal-case"
+              >
+                ?
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-72">
+              {help}
+            </TooltipContent>
+          </Tooltip>
         )}
       </div>
       <div className="mt-0.5 text-xl font-semibold" style={valueColor ? { color: valueColor } : undefined}>
