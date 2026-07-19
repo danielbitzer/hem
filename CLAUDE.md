@@ -33,5 +33,8 @@ fetch `./api/...`) and the bundle fully offline (no CDN).
 UI components are shadcn (`src/components/ui`, checked in — edit freely, or
 re-generate with `bunx shadcn add <name>`); forms use TanStack Form, data
 fetching TanStack Query, API contracts are Zod schemas in `src/api.ts`.
-Dark mode follows `prefers-color-scheme` via a custom variant in `index.css`
-— HA ingress never sets a `.dark` class, so don't use class-based theming.
+Theming keys off `<html data-theme="light|dark">`: an inline script in
+`index.html` stamps the resolved theme pre-paint and `src/theme.ts` owns it
+after that (per-browser Light/Dark/System setting; System follows
+`prefers-color-scheme`). HA ingress never sets a `.dark` class or exposes HA
+theme variables, so don't theme off anything else.

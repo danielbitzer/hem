@@ -30,6 +30,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { refetchPlanUntilFresh } from "@/planRefresh";
+import { setThemePref, type ThemePref, useThemePref } from "@/theme";
 import { EntityPicker } from "./EntityPicker";
 import { ALL_FIELDS, type FieldSpec, getPath, SECTIONS, setPath } from "./spec";
 import { VacationCard } from "./VacationCard";
@@ -126,7 +128,7 @@ function SettingsForm({ initialConfig }: { initialConfig: Record<string, unknown
       setGeneralErrors([]);
       setSaved(true);
       void queryClient.invalidateQueries({ queryKey: ["config"] });
-      void queryClient.invalidateQueries({ queryKey: ["plan"] });
+      void refetchPlanUntilFresh(queryClient);
     },
     onError: (e) => {
       setSaved(false);
@@ -237,6 +239,8 @@ function SettingsForm({ initialConfig }: { initialConfig: Record<string, unknown
         </Card>
       ))}
 
+      <AppearanceCard />
+
       {generalErrors.length > 0 && (
         <div className="border-destructive text-destructive rounded-xl border px-4 py-3 text-sm">
           {generalErrors.map((msg) => (
@@ -263,6 +267,35 @@ function SettingsForm({ initialConfig }: { initialConfig: Record<string, unknown
         )}
       </div>
     </form>
+  );
+}
+
+/** Client-side only — applies instantly and is stored in this browser
+ * (localStorage), not in the HEM config, so it sits outside the form/save. */
+function AppearanceCard() {
+  const pref = useThemePref();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Theme</CardTitle>
+        <CardDescription>
+          Light, dark, or follow this device's preference. Applies immediately and is
+          remembered in this browser only.
+        </CardDescription>
+        <CardAction>
+          <Select value={pref} onValueChange={(v) => setThemePref(v as ThemePref)}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="system">System</SelectItem>
+              <SelectItem value="light">Light</SelectItem>
+              <SelectItem value="dark">Dark</SelectItem>
+            </SelectContent>
+          </Select>
+        </CardAction>
+      </CardHeader>
+    </Card>
   );
 }
 

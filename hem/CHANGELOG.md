@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Theme setting** (Settings → Theme): choose Light, Dark, or System
+  (follow this device's preference — the previous behaviour and still the
+  default). Applies instantly and is remembered per browser, like other HA
+  add-ons do it — HA ingress gives the add-on no way to read the HA theme.
+- Dashboard banners (vacation mode, lifecycle) now update within a couple of
+  seconds of saving settings: after a save the plan is re-fetched until the
+  post-apply re-solve lands, instead of racing it once and then waiting for
+  the next 60 s poll.
+
 ## 0.4.0
 
 - **Dashboard redesigned to the Claude Design "HA Cards" direction (1A)**:
