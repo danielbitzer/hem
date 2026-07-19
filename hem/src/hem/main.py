@@ -113,11 +113,13 @@ async def cycle(
         "coverage": data.coverage,
         "load_forecast": data.load_forecast_status,
         "load_forecast_info": data.load_forecast_info,
+        "vacation": data.vacation,
     }
 
     # Publishing IS the output: the user's actuator automation (see
     # blueprints/hem_actuator.yaml) turns these sensors into inverter control.
     await publisher.publish_plan(plan, settings.battery.capacity_kwh)
+    await publisher.publish_vacation(data.vacation)
     await publisher.publish_status(
         "ok",
         last_solve=now,
@@ -258,7 +260,10 @@ async def run() -> None:
                 if not await client.api_ok():
                     log.warning("Home Assistant API not reachable yet; will retry each cycle")
                 publisher = Publisher(client)
-                tz = default_timezone()
+                tz = default_timezone(env.tz)
+                # Anchors every local-time feature (load buckets, daily SoC
+                # target, vacation end times) — worth one loud line.
+                log.info("local timezone: %s", tz)
                 while True:
                     # No await between clear() and the current read: a PUT
                     # landing after the read re-sets the event and is seen by

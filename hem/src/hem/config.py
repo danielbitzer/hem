@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from datetime import datetime, tzinfo
 from datetime import time as dt_time
 from pathlib import Path
 from typing import Literal, Self
@@ -39,6 +40,10 @@ class EnvSettings(BaseSettings):
     ha_token: str = ""  # HEM_HA_TOKEN, standalone only
     config_file: Path | None = None  # HEM_CONFIG_FILE, overrides the hem-config.json path
     log_level: str = ""  # HEM_LOG_LEVEL, overrides options log_level when set
+    # HEM_TZ: explicit local timezone (e.g. Australia/Adelaide), wins over the
+    # TZ env var and system detection. Works from hem/.env, unlike TZ (dotenv
+    # values are read by pydantic-settings, not exported to os.environ).
+    tz: str = ""
 
 
 @dataclass(frozen=True)
@@ -134,6 +139,32 @@ class Grid(BaseModel):
     export_limit_kw: float = Field(ge=0)
 
 
+class Vacation(BaseModel):
+    """Vacation mode: the household is away, so the learned load forecast is
+    wrong — replace it with a flat standby baseline (fridge, network, pumps)
+    and free the rest of the battery for the market. No temperature response
+    (nobody is running the AC) and no load.buffer (the baseline is already a
+    deliberate number) while active. `until` (local time, optional) auto-
+    expires the mode; if it lands inside the horizon, steps after it revert
+    to the learned forecast — the plan already covers your return evening."""
+
+    enabled: bool = False
+    baseline_kw: float = Field(default=0.3, ge=0)
+    until: datetime | None = None
+
+    def active(self, now: datetime, tz: tzinfo) -> bool:
+        if not self.enabled:
+            return False
+        return self.until is None or now < self.until_utc(tz)
+
+    def until_utc(self, tz: tzinfo) -> datetime | None:
+        """`until` as an aware instant; a naive value (what the UI's local
+        datetime picker submits) is interpreted in HEM's local timezone."""
+        if self.until is None:
+            return None
+        return self.until.replace(tzinfo=tz) if self.until.tzinfo is None else self.until
+
+
 class Load(BaseModel):
     # Safety margin on the learned load forecast: the whole forecast vector is
     # scaled by (1 + buffer), after the temperature response. The learned
@@ -173,6 +204,7 @@ class Settings(BaseModel):
     battery: Battery
     grid: Grid
     load: Load = Load()
+    vacation: Vacation = Vacation()
     optimizer: Optimizer = Optimizer()
     spike: Spike = Spike()
 

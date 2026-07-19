@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Vacation mode**: flatten the load forecast to a configured standby
+  baseline while the household is away, freeing the whole battery for spikes
+  and cheap windows. Enabled from a dialog at the top of Settings
+  (baseline kW + optional local end time); auto-expires at the end time, and
+  an end inside the horizon reverts later steps to the learned forecast so
+  the return evening is already planned. No temperature response and no
+  `load.buffer` while active. Surfaced as a dashboard banner and
+  `binary_sensor.hem_vacation_mode` (visibility only — the actuator
+  deliberately ignores it).
+
 ## 0.2.0
 
 - **Configuration moves into the web UI** (#5): a new Settings view (shadcn

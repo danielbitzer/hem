@@ -88,6 +88,15 @@ function warningText(plan: PlanResponse): string | null {
         "Plans assume ZERO house load; consider raising battery.soc_min until learning kicks in.";
 }
 
+function vacationBanner(plan: PlanResponse): string | null {
+  const v = plan.meta.vacation;
+  if (!v) return null;
+  const until = v.until
+    ? `until ${new Date(v.until).toLocaleString()}`
+    : "until turned off in Settings";
+  return `🌴 Vacation mode — load forecast flattened to a ${v.baseline_kw} kW baseline ${until}.`;
+}
+
 function lifecycleBanner(config: ConfigResponse | undefined): string | null {
   if (!config || config.lifecycle === "running") return null;
   return config.lifecycle === "unconfigured"
@@ -150,6 +159,7 @@ function Dashboard({ config }: { config: ConfigResponse | undefined }) {
   const fcEnd = plan.meta.price_forecast_end ? Date.parse(plan.meta.price_forecast_end) : null;
   const loadLine = loadForecastLine(plan);
   const warning = warningText(plan);
+  const vacation = vacationBanner(plan);
 
   return (
     <div>
@@ -159,6 +169,7 @@ function Dashboard({ config }: { config: ConfigResponse | undefined }) {
         {error && <div className="mt-1 text-xs text-[#c0392b]">{error}</div>}
       </div>
       {banner && <Banner text={banner} />}
+      {vacation && <Banner text={vacation} />}
       {warning && <Banner text={warning} />}
       <Tiles plan={plan} rows={rows} />
       <PricesChart rows={chartRows} domain={domain} forecastEnd={fcEnd} />

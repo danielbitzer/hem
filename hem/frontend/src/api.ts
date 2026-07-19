@@ -42,6 +42,12 @@ export const LoadForecastInfoSchema = z.looseObject({
 });
 export type LoadForecastInfo = z.infer<typeof LoadForecastInfoSchema>;
 
+export const VacationInfoSchema = z.object({
+  baseline_kw: z.number().nullish(),
+  until: z.string().nullish(),
+});
+export type VacationInfo = z.infer<typeof VacationInfoSchema>;
+
 // meta is a loose object: the backend adds informational keys over time and
 // the UI should keep working (and keep validating) without listing them all.
 export const PlanMetaSchema = z.looseObject({
@@ -50,6 +56,7 @@ export const PlanMetaSchema = z.looseObject({
   coverage: z.record(z.string(), z.number()).nullish(),
   load_forecast: z.enum(["learned", "pending", "unconfigured"]).optional(),
   load_forecast_info: LoadForecastInfoSchema.optional(),
+  vacation: VacationInfoSchema.nullish(),
 });
 export type PlanMeta = z.infer<typeof PlanMetaSchema>;
 

@@ -351,3 +351,17 @@ async def test_lts_unavailable_falls_back_to_raw_history():
         grid = half_hour_grid(datetime(2026, 7, 15, 0, 0, tzinfo=UTC), 1)
         out = fc.forecast(grid, None)
     assert out[1] == pytest.approx(1.5)  # learned from raw history
+
+
+def test_default_timezone_precedence(monkeypatch):
+    from hem.forecast.load import default_timezone
+
+    # HEM_TZ > TZ env > UTC
+    monkeypatch.setenv("TZ", "Australia/Sydney")
+    assert str(default_timezone()) == "Australia/Sydney"
+    assert str(default_timezone("Australia/Adelaide")) == "Australia/Adelaide"
+    monkeypatch.delenv("TZ")
+    assert str(default_timezone()) == "UTC"
+    # an explicit-but-wrong zone fails loudly, it exists to remove ambiguity
+    with pytest.raises(RuntimeError, match="HEM_TZ"):
+        default_timezone("Adelaide")

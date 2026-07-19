@@ -137,6 +137,19 @@ knob: the buffer shapes the **forecast**, while `battery.soc_min` (reserve
 floor) and the daily full-charge target shape **SoC policy** — stacking all
 three overlaps. The dashboard's load-forecast line shows the active buffer.
 
+**Vacation mode** (Settings → "Enable vacation mode…"): while the household
+is away the learned profile books phantom evening load, so the planner holds
+back energy for cooking and AC that won't happen — and under-commits to
+spikes. Vacation mode replaces the forecast with a flat standby baseline
+(`baseline_kw` — fridge, network, pumps; typically 0.2–0.4 kW, check your
+load sensor overnight), with no temperature response and no `load.buffer`
+applied. An optional end time (local) auto-expires it; if the end lands
+inside the planning horizon, steps after it already use the learned forecast
+— the plan covers your return evening before you're home. While active the
+dashboard shows a banner and `binary_sensor.hem_vacation_mode` is `on`
+(visibility only — the actuator does not read it; HEM's own plans already
+reflect the baseline).
+
 **Without `entities.load_power`** (or before learning first succeeds) HEM
 plans with **zero house load** and flags it: `sensor.hem_status` carries
 `load_forecast: unconfigured|pending` and the dashboard shows a warning.

@@ -404,6 +404,49 @@ async def test_load_buffer_scales_the_forecast():
     assert "buffer" not in plain.load_forecast_info
 
 
+async def test_vacation_mode_flattens_load_until_return():
+    # NOW is 2026-07-15T11:36Z; a 30-min-grid horizon runs ~36h ahead.
+    # Vacation until 2026-07-16T00:00Z (naive local 09:30 Adelaide): away
+    # steps get the flat unbuffered baseline, later steps revert to the
+    # learned forecast WITH the buffer.
+    fake = full_fake_ha()
+    settings = make_settings(
+        load={"buffer": 0.2},
+        vacation={"enabled": True, "baseline_kw": 0.25, "until": "2026-07-16T09:30:00"},
+    )
+    async with fake_ha_client(fake) as client:
+        data = await make_planner(client, settings).gather(NOW)
+    until_utc = datetime(2026, 7, 16, 0, 0, tzinfo=UTC)
+    for step, load in zip(data.grid.steps, data.inputs.load, strict=True):
+        if step.start < until_utc:
+            assert load == pytest.approx(0.25)  # baseline, no buffer
+        else:
+            assert load == pytest.approx(0.5 * 1.2)  # learned, buffered
+    assert data.vacation == {"baseline_kw": 0.25, "until": "2026-07-16T09:30:00"}
+
+
+async def test_vacation_mode_expired_or_disabled_is_inert():
+    fake = full_fake_ha()
+    expired = make_settings(
+        vacation={"enabled": True, "baseline_kw": 0.25, "until": "2026-07-01T00:00:00"}
+    )
+    disabled = make_settings(vacation={"baseline_kw": 0.25})
+    async with fake_ha_client(fake) as client:
+        for settings in (expired, disabled):
+            data = await make_planner(client, settings).gather(NOW)
+            assert np.allclose(data.inputs.load, 0.5)  # learned forecast
+            assert data.vacation is None
+
+
+async def test_vacation_mode_open_ended_covers_whole_horizon():
+    fake = full_fake_ha()
+    settings = make_settings(vacation={"enabled": True, "baseline_kw": 0.3})
+    async with fake_ha_client(fake) as client:
+        data = await make_planner(client, settings).gather(NOW)
+    assert np.allclose(data.inputs.load, 0.3)
+    assert data.vacation == {"baseline_kw": 0.3, "until": None}
+
+
 async def test_daily_target_wired_into_inputs():
     settings = make_settings(
         battery={

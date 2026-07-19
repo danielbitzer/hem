@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   type ConfigDoc,
+  type ConfigResponse,
   ConfigValidationError,
   type Entity,
   type FieldError,
@@ -31,6 +32,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { EntityPicker } from "./EntityPicker";
 import { ALL_FIELDS, type FieldSpec, getPath, SECTIONS, setPath } from "./spec";
+import { VacationCard } from "./VacationCard";
 
 /** Form state mirrors the config document's shape; numbers are input strings
  * until submit so partial typing ("0.", "-") never fights the user. */
@@ -142,7 +144,12 @@ function SettingsForm({ initialConfig }: { initialConfig: Record<string, unknown
     defaultValues: buildDefaults(initialConfig),
     onSubmit: async ({ value }) => {
       setSaved(false);
-      await save.mutateAsync(toDoc(value)).catch(() => undefined); // surfaced via mutation state
+      const doc = toDoc(value);
+      // The vacation section is managed by VacationCard, not this form —
+      // carry the last-saved value through so a form save can't reset it.
+      const latest = queryClient.getQueryData<ConfigResponse>(["config"]);
+      if (latest?.config?.vacation !== undefined) doc.vacation = latest.config.vacation;
+      await save.mutateAsync(doc).catch(() => undefined); // surfaced via mutation state
     },
   });
 
@@ -180,6 +187,8 @@ function SettingsForm({ initialConfig }: { initialConfig: Record<string, unknown
           </CardAction>
         </CardHeader>
       </Card>
+
+      <VacationCard />
 
       {SECTIONS.map((section) => (
         <Card key={section.id}>

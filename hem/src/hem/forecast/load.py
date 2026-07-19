@@ -647,12 +647,21 @@ def build_load_forecaster(
     return HistoryLoadForecaster(client, load_power, tz, temp_entity_id=outdoor_temp)
 
 
-def default_timezone() -> ZoneInfo:
-    """Local timezone from the TZ env var (set for HA add-ons); UTC otherwise.
+def default_timezone(explicit: str = "") -> ZoneInfo:
+    """Local timezone: `explicit` (HEM_TZ, env or hem/.env) wins, then the TZ
+    env var (the Supervisor sets it for add-ons), then UTC.
 
-    A UTC fallback shifts the learned hour-of-day buckets rather than
-    crashing; a wrong zone shows up as an offset daily shape.
+    This zone anchors every local-time feature — learned hour-of-day buckets,
+    the daily SoC target, vacation-mode end times — so the UTC fallback
+    shifts all of them by the UTC offset: dev shells rarely export TZ, so set
+    HEM_TZ in hem/.env (see .env.example). An invalid explicit zone fails
+    loudly: it exists to remove ambiguity.
     """
+    if explicit:
+        try:
+            return ZoneInfo(explicit)
+        except (ValueError, ZoneInfoNotFoundError) as e:
+            raise RuntimeError(f"HEM_TZ={explicit!r} is not a valid IANA timezone") from e
     try:
         return ZoneInfo(os.environ["TZ"])
     except (KeyError, ZoneInfoNotFoundError):
