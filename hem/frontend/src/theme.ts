@@ -44,16 +44,61 @@ export const RIGHT_MARGIN = 16;
 export const CHART_MARGIN = { top: 8, right: RIGHT_MARGIN, bottom: 0, left: 0 };
 export const CHART_HEIGHT = 200;
 
+// Theme preference: "system" follows prefers-color-scheme, "light"/"dark"
+// force it. Stored per browser (localStorage) the way other HA add-ons do it
+// — the ingress iframe has no way to read the HA theme. The RESOLVED theme
+// is stamped on <html data-theme> (index.html stamps it pre-paint, this
+// store keeps it current), which is what index.css keys off.
+export type ThemePref = "light" | "dark" | "system";
+
+const STORAGE_KEY = "hem-theme";
 const query = window.matchMedia("(prefers-color-scheme: dark)");
+const listeners = new Set<() => void>();
+
+function storedPref(): ThemePref {
+  try {
+    const v = localStorage.getItem(STORAGE_KEY);
+    return v === "light" || v === "dark" ? v : "system";
+  } catch {
+    return "system";
+  }
+}
+
+let pref: ThemePref = storedPref();
+
+function resolvedDark(): boolean {
+  return pref === "dark" || (pref === "system" && query.matches);
+}
+
+function applyTheme(): void {
+  document.documentElement.dataset.theme = resolvedDark() ? "dark" : "light";
+  for (const notify of listeners) notify();
+}
+
+query.addEventListener("change", applyTheme);
+
+export function setThemePref(next: ThemePref): void {
+  pref = next;
+  try {
+    if (next === "system") localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY, next);
+  } catch {
+    // storage unavailable (private mode): still applies for this page load
+  }
+  applyTheme();
+}
+
+function subscribe(notify: () => void): () => void {
+  listeners.add(notify);
+  return () => listeners.delete(notify);
+}
+
+export function useThemePref(): ThemePref {
+  return useSyncExternalStore(subscribe, () => pref);
+}
 
 export function useDark(): boolean {
-  return useSyncExternalStore(
-    (notify) => {
-      query.addEventListener("change", notify);
-      return () => query.removeEventListener("change", notify);
-    },
-    () => query.matches,
-  );
+  return useSyncExternalStore(subscribe, resolvedDark);
 }
 
 // SVG attributes can't resolve CSS variables, so chart strokes restate the

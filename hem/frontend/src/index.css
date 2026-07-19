@@ -2,16 +2,19 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* HA ingress can't set a .dark class — dark mode follows the OS/browser
-   preference, so the dark: variant is bound to the media query. */
-@custom-variant dark (@media (prefers-color-scheme: dark));
+/* HA ingress can't set a .dark class or expose the HA theme — the theme is
+   a per-browser Light/Dark/System setting (Settings → Appearance). The
+   RESOLVED theme is stamped on <html data-theme> before first paint
+   (index.html) and kept current by src/theme.ts; System follows
+   prefers-color-scheme. Everything themed keys off that attribute. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* Design: claude.ai/design "Home Assistant add-on interface", direction 1A
    ("HA Cards") — mirrors HA's native card look: soft grey canvas, white
    cards, HA-blue accent, purple action accent. The dark palette is the
    handoff's 1C ("Nightwatch") neutrals carrying 1A's accents. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --background: #f4f6f8;
   --foreground: #1a2028;
   --card: #ffffff;
@@ -39,32 +42,31 @@
   --card-shadow: 0 1px 3px rgba(20, 30, 55, 0.07);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0f1218;
-    --foreground: #e7ecf2;
-    --card: #161b24;
-    --card-foreground: #e7ecf2;
-    --popover: #161b24;
-    --popover-foreground: #e7ecf2;
-    --primary: oklch(0.68 0.14 250);
-    --primary-foreground: #ffffff;
-    --secondary: #1b212c;
-    --secondary-foreground: #e7ecf2;
-    --muted: #1b212c;
-    --muted-foreground: #8b96a6;
-    --accent: #1b212c;
-    --accent-foreground: #e7ecf2;
-    --destructive: #e0563f;
-    --border: #242c39;
-    --input: #242c39;
-    --ring: oklch(0.68 0.14 250);
-    --action: oklch(0.66 0.17 300);
-    --chart-grid: #222a38;
-    --tab-bg: #1b212c;
-    --seg-idle: #2a3242;
-    --card-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0f1218;
+  --foreground: #e7ecf2;
+  --card: #161b24;
+  --card-foreground: #e7ecf2;
+  --popover: #161b24;
+  --popover-foreground: #e7ecf2;
+  --primary: oklch(0.68 0.14 250);
+  --primary-foreground: #ffffff;
+  --secondary: #1b212c;
+  --secondary-foreground: #e7ecf2;
+  --muted: #1b212c;
+  --muted-foreground: #8b96a6;
+  --accent: #1b212c;
+  --accent-foreground: #e7ecf2;
+  --destructive: #e0563f;
+  --border: #242c39;
+  --input: #242c39;
+  --ring: oklch(0.68 0.14 250);
+  --action: oklch(0.66 0.17 300);
+  --chart-grid: #222a38;
+  --tab-bg: #1b212c;
+  --seg-idle: #2a3242;
+  --card-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 
 @theme inline {

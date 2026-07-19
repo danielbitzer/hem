@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { refetchPlanUntilFresh } from "@/planRefresh";
 
 interface StoredVacation {
   enabled?: boolean;
@@ -74,7 +75,7 @@ export function VacationCard() {
       setError(null);
       setOpen(false);
       void queryClient.invalidateQueries({ queryKey: ["config"] });
-      void queryClient.invalidateQueries({ queryKey: ["plan"] });
+      void refetchPlanUntilFresh(queryClient);
     },
     onError: (e) => {
       setError(
