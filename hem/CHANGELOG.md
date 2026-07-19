@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Settings page is now phone-friendly: the vacation and theme card actions
+  drop onto their own full-width row instead of squeezing the description
+  into a sliver, the vacation dialog's end-time row wraps, its footer
+  buttons stack full-width, and the header's tab switcher wraps below the
+  title on narrow screens.
+
 ## 0.5.0
 
 - **Theme setting** (Settings → Theme): choose Light, Dark, or System

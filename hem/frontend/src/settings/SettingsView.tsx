@@ -282,7 +282,7 @@ function AppearanceCard() {
           Light, dark, or follow this device's preference. Applies immediately and is
           remembered in this browser only.
         </CardDescription>
-        <CardAction>
+        <CardAction className="max-sm:col-span-2 max-sm:col-start-1 max-sm:row-span-1 max-sm:row-start-3 max-sm:justify-self-start">
           <Select value={pref} onValueChange={(v) => setThemePref(v as ThemePref)}>
             <SelectTrigger className="w-32">
               <SelectValue />
