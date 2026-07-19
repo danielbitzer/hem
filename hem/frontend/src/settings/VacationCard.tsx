@@ -104,7 +104,7 @@ export function VacationCard() {
         <CardDescription>
           {active ? (
             <>
-              <span className="font-medium text-[#e67e22]">Active</span> — load forecast
+              <span className="font-medium text-[#efa63c]">Active</span> — load forecast
               flattened to {stored.baseline_kw} kW, {fmtUntil(stored.until)}.
             </>
           ) : (
@@ -114,33 +114,18 @@ export function VacationCard() {
             </>
           )}
         </CardDescription>
-        <CardAction className="flex gap-2">
-          {active ? (
-            <>
-              <Button type="button" variant="outline" size="sm" onClick={openDialog}>
-                Edit…
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                disabled={save.isPending}
-                onClick={() => save.mutate({ ...stored, enabled: false })}
-              >
-                Disable
-              </Button>
-            </>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!config.data?.configured}
-              onClick={openDialog}
-            >
-              Enable vacation mode…
-            </Button>
-          )}
+        <CardAction>
+          <Button
+            type="button"
+            variant={active ? "default" : "outline"}
+            className={active ? "rounded-md" : "rounded-md bg-secondary"}
+            disabled={!config.data?.configured}
+            onClick={openDialog}
+          >
+            {active
+              ? `Vacation mode on · ${stored.until ? `ends ${new Date(stored.until).toLocaleString(undefined, { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" })}` : "no end time"}`
+              : "Enable vacation mode…"}
+          </Button>
         </CardAction>
         {error && !open && <p className="text-destructive text-xs">{error}</p>}
       </CardHeader>
@@ -217,6 +202,17 @@ export function VacationCard() {
             {error && <p className="text-destructive text-xs">{error}</p>}
           </div>
           <DialogFooter>
+            {active && (
+              <Button
+                type="button"
+                variant="destructive"
+                className="mr-auto"
+                disabled={save.isPending}
+                onClick={() => save.mutate({ ...stored, enabled: false })}
+              >
+                Disable vacation mode
+              </Button>
+            )}
             <DialogClose asChild>
               <Button type="button" variant="ghost">
                 Cancel

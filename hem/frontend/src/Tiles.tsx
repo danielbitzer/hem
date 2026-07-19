@@ -1,7 +1,8 @@
+import type { ReactNode } from "react";
 import type { PlanResponse } from "./api";
 import type { Row } from "./charts";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./components/ui/tooltip";
-import { ACTION_COLORS, fmtTime } from "./theme";
+import { ACTION_COLORS, fmtTime, SERIES } from "./theme";
 
 const HORIZON_COST_HELP =
   "Expected net cash flow at the meter over the plan horizon: planned grid " +
@@ -10,72 +11,121 @@ const HORIZON_COST_HELP =
   "energy still stored at the horizon end, so a plan that ends with a full " +
   "battery looks 'worse' than one that sold everything.";
 
-function Tile({
-  label,
-  value,
-  sub,
-  valueColor,
-  help,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  valueColor?: string;
-  help?: string;
-}) {
+const ACTION_LABEL: Record<string, string> = {
+  charge: "charging",
+  discharge: "discharging",
+  no_charge: "no charge",
+  idle: "idle",
+  curtail: "curtailing",
+};
+
+const ACTION_SUB: Record<string, string> = {
+  charge: "charging from the grid",
+  discharge: "exporting stored energy",
+  no_charge: "self-consumption, charging blocked",
+  idle: "self-consumption",
+  curtail: "export capped — negative feed-in",
+};
+
+function HelpBadge({ label, help }: { label: string; help: string }) {
   return (
-    <div className="min-w-[130px] rounded-xl border border-border bg-card px-4 py-2.5">
-      <div className="text-[11px] tracking-wider text-muted-foreground uppercase">
-        {label}
-        {help && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label={`About ${label}`}
-                className="ml-1.5 inline-block size-[13px] cursor-help rounded-full border border-muted-foreground/50 text-center text-[9px] leading-3 normal-case"
-              >
-                ?
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="max-w-72">
-              {help}
-            </TooltipContent>
-          </Tooltip>
-        )}
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={`About ${label}`}
+          className="ml-1.5 inline-block size-[13px] cursor-help rounded-full border border-muted-foreground/50 text-center text-[9px] leading-3 normal-case"
+        >
+          ?
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-72">
+        {help}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Action-now hero card: the optimiser's current call at a glance. */
+export function Hero({ rows }: { rows: Row[] }) {
+  const step0 = rows[0];
+  if (!step0) return null;
+  const forced = step0.action === "charge" || step0.action === "discharge";
+  const setpoint = forced
+    ? `${step0.battery > 0 ? "+" : "−"}${Math.abs(step0.battery).toFixed(1)} kW`
+    : "—";
+  return (
+    <div className="shadow-card flex items-center justify-between gap-5 rounded-lg border border-border bg-card px-[22px] py-[18px]">
+      <div>
+        <div className="text-[11px] font-semibold tracking-[.09em] text-muted-foreground uppercase">
+          Action now
+        </div>
+        <div
+          className="mt-1.5 font-mono text-[32px] leading-tight font-semibold capitalize"
+          style={{ color: ACTION_COLORS[step0.action] ?? "var(--action)" }}
+        >
+          {ACTION_LABEL[step0.action] ?? step0.action.replace("_", " ")}
+        </div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          {fmtTime(step0.t)} – {fmtTime(step0.end)} · {ACTION_SUB[step0.action] ?? ""}
+        </div>
       </div>
-      <div className="mt-0.5 text-xl font-semibold" style={valueColor ? { color: valueColor } : undefined}>
-        {value}
+      <div className="shrink-0 text-right">
+        <div className="text-[11px] font-semibold tracking-[.09em] text-muted-foreground uppercase">
+          Battery setpoint
+        </div>
+        <div className="mt-1.5 font-mono text-[28px] leading-tight font-semibold text-foreground">
+          {setpoint}
+        </div>
       </div>
-      {sub && <div className="mt-0.5 text-[11px] text-muted-foreground">{sub}</div>}
     </div>
   );
 }
 
-export function Tiles({ plan, rows }: { plan: PlanResponse; rows: Row[] }) {
-  const step0 = rows[0];
-  if (!step0) return null;
-  const cap = plan.meta.capacity_kwh;
-  const forced = step0.action === "charge" || step0.action === "discharge";
+function Stat({
+  label,
+  value,
+  sub,
+  help,
+}: {
+  label: string;
+  value: ReactNode;
+  sub: string;
+  help?: string;
+}) {
+  return (
+    <div className="shadow-card rounded-lg border border-border bg-card px-4 py-3.5">
+      <div className="text-[10px] font-semibold tracking-[.06em] text-muted-foreground uppercase">
+        {label}
+        {help && <HelpBadge label={label} help={help} />}
+      </div>
+      <div className="mt-2 font-mono text-xl font-semibold text-foreground">{value}</div>
+      <div className="mt-0.5 text-[11px] text-muted-foreground">{sub}</div>
+    </div>
+  );
+}
 
+/** 4-up stat grid (collapses 2-up, then 1-up on narrow widths). */
+export function Stats({ plan, rows }: { plan: PlanResponse; rows: Row[] }) {
+  const step0 = rows[0];
+  const last = rows[rows.length - 1];
+  if (!step0 || !last) return null;
+  const horizonH = Math.round((last.end - step0.t) / 3_600_000);
   const loadKwh = rows.reduce((sum, r) => sum + (r.load * (r.end - r.t)) / 3_600_000, 0);
-  const last = rows[rows.length - 1]!;
-  const horizonH = (last.end - step0.t) / 3_600_000;
+  const cost = plan.objective_cost;
 
   return (
-    <div className="mb-4 flex flex-wrap gap-3">
-      <Tile
-        label="Action now"
-        value={step0.action.replace("_", " ")}
-        valueColor={ACTION_COLORS[step0.action] ?? undefined}
-      />
-      <Tile
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <Stat
         label="Amber buy / sell"
-        value={`$${step0.buy.toFixed(2)} / $${step0.sell.toFixed(2)}`}
-        sub={
-          `${fmtTime(step0.t)} – ${fmtTime(step0.end)}` +
-          (plan.meta.prices_estimated ? " · forecast, unconfirmed" : "")
+        value={
+          <>
+            <span style={{ color: SERIES.buy }}>${step0.buy.toFixed(2)}</span>
+            <span className="text-muted-foreground"> / </span>
+            <span style={{ color: SERIES.sell }}>${step0.sell.toFixed(2)}</span>
+          </>
         }
+        sub={plan.meta.prices_estimated ? "this interval · unconfirmed" : "this interval"}
         help={
           plan.meta.prices_estimated
             ? "Amber hasn't confirmed this interval's price yet — the plan was " +
@@ -84,17 +134,13 @@ export function Tiles({ plan, rows }: { plan: PlanResponse; rows: Row[] }) {
             : undefined
         }
       />
-      <Tile label="Battery setpoint" value={forced ? `${step0.battery.toFixed(2)} kW` : "—"} />
-      <Tile
-        label="SoC target"
-        value={
-          cap
-            ? `${((100 * step0.soc) / cap).toFixed(0)}% · ${step0.soc.toFixed(1)} kWh`
-            : `${step0.soc.toFixed(1)} kWh`
-        }
+      <Stat
+        label="Horizon cost"
+        value={`$${cost < 0 ? "−" : ""}${Math.abs(cost).toFixed(2)}`}
+        sub={`net over ${horizonH} h`}
+        help={HORIZON_COST_HELP}
       />
-      <Tile label="Horizon cost" value={`$${plan.objective_cost.toFixed(2)}`} help={HORIZON_COST_HELP} />
-      <Tile label="Forecast load" value={`${loadKwh.toFixed(1)} kWh / ${Math.round(horizonH)}h`} />
+      <Stat label="Forecast load" value={loadKwh.toFixed(1)} sub={`kWh / ${horizonH} h`} />
     </div>
   );
 }
