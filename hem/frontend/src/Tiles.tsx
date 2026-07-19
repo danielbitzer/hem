@@ -47,16 +47,13 @@ function HelpBadge({ label, help }: { label: string; help: string }) {
 }
 
 /** Action-now hero card: the optimiser's current call at a glance. */
-export function Hero({ plan, rows }: { plan: PlanResponse; rows: Row[] }) {
+export function Hero({ rows }: { rows: Row[] }) {
   const step0 = rows[0];
   if (!step0) return null;
   const forced = step0.action === "charge" || step0.action === "discharge";
   const setpoint = forced
     ? `${step0.battery > 0 ? "+" : "−"}${Math.abs(step0.battery).toFixed(1)} kW`
     : "—";
-  const unconfirmed = plan.meta.prices_estimated
-    ? " · price forecast, unconfirmed"
-    : "";
   return (
     <div className="shadow-card flex items-center justify-between gap-5 rounded-lg border border-border bg-card px-[22px] py-[18px]">
       <div>
@@ -71,7 +68,6 @@ export function Hero({ plan, rows }: { plan: PlanResponse; rows: Row[] }) {
         </div>
         <div className="mt-1 text-xs text-muted-foreground">
           {fmtTime(step0.t)} – {fmtTime(step0.end)} · {ACTION_SUB[step0.action] ?? ""}
-          {unconfirmed}
         </div>
       </div>
       <div className="shrink-0 text-right">

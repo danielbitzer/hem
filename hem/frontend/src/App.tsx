@@ -190,7 +190,7 @@ function Dashboard({
       {banner && <Banner text={banner} />}
       {vacation && <Banner text={vacation} />}
       {warning && <Banner text={warning} />}
-      <Hero plan={plan} rows={rows} />
+      <Hero rows={rows} />
       <Stats plan={plan} rows={rows} />
       <PricesChart rows={chartRows} domain={domain} forecastEnd={fcEnd} />
       <ForecastChart rows={chartRows} domain={domain} info={loadForecastLine(plan)} />
