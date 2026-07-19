@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Dashboard: tile "?" help tooltips are proper styled tooltips (shadcn) with
+  keyboard focus support instead of native browser `title` bubbles (#11).
+
 - **Re-solve on every price change**: the $0.05 significance threshold is
   gone — any change of the live buy/sell price (or its estimate flag)
   triggers an early re-solve, so the plan and dashboard reflect the real
