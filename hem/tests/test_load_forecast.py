@@ -353,25 +353,15 @@ async def test_lts_unavailable_falls_back_to_raw_history():
     assert out[1] == pytest.approx(1.5)  # learned from raw history
 
 
-def test_default_timezone_falls_back_to_system_zone(tmp_path, monkeypatch):
-    from hem.forecast.load import _zone_from_localtime, default_timezone
+def test_default_timezone_precedence(monkeypatch):
+    from hem.forecast.load import default_timezone
 
-    # symlink shaped like /etc/localtime on macOS/Linux
-    zone_file = tmp_path / "zoneinfo" / "Australia" / "Adelaide"
-    zone_file.parent.mkdir(parents=True)
-    zone_file.write_bytes(b"TZif")
-    link = tmp_path / "localtime"
-    link.symlink_to(zone_file)
-    assert str(_zone_from_localtime(str(link))) == "Australia/Adelaide"
-    assert _zone_from_localtime(str(tmp_path / "nope")) is None
-
-    # precedence: explicit HEM_TZ > TZ env > system zone
+    # HEM_TZ > TZ env > UTC
     monkeypatch.setenv("TZ", "Australia/Sydney")
     assert str(default_timezone()) == "Australia/Sydney"
     assert str(default_timezone("Australia/Adelaide")) == "Australia/Adelaide"
-    # without TZ we get SOME real zone (system) or UTC — never a crash
     monkeypatch.delenv("TZ")
-    assert default_timezone() is not None
+    assert str(default_timezone()) == "UTC"
     # an explicit-but-wrong zone fails loudly, it exists to remove ambiguity
     with pytest.raises(RuntimeError, match="HEM_TZ"):
         default_timezone("Adelaide")
