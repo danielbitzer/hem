@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - Dashboard: tile "?" help tooltips are proper styled tooltips (shadcn) with
   keyboard focus support instead of native browser `title` bubbles (#11).
