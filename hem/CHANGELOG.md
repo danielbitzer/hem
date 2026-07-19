@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 - **Theme setting** (Settings → Theme): choose Light, Dark, or System
   (follow this device's preference — the previous behaviour and still the
