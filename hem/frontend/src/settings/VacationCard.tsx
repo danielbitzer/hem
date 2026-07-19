@@ -34,6 +34,21 @@ export function fmtUntil(until: string | null | undefined): string {
   return until ? `until ${new Date(until).toLocaleString()}` : "until turned off";
 }
 
+/** Suggested end: tomorrow at the next full hour, as a datetime-local value.
+ * The field is always pre-filled with a CONCRETE value: Safari displays
+ * today's date in an untouched datetime-local input while its value is still
+ * "" — users saw the picker "set" yet PUT `until: null`. */
+export function suggestedUntil(now = new Date()): string {
+  const d = new Date(now.getTime() + 24 * 3600_000);
+  d.setMinutes(0, 0, 0);
+  d.setHours(d.getHours() + 1);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  );
+}
+
 /** Vacation mode lives outside the main settings form: enabling/disabling is
  * an immediate, targeted PUT of the last-saved config with only `vacation`
  * changed — it must not depend on (or accidentally save) unsaved form edits. */
@@ -72,12 +87,15 @@ export function VacationCard() {
 
   const openDialog = () => {
     setBaseline(null);
-    setUntil(null);
+    // Editing an existing vacation keeps its end (incl. open-ended);
+    // enabling fresh pre-fills the suggestion — never an untouched empty
+    // picker, which Safari renders with today's date but values as "".
+    setUntil(stored.until ? stored.until.slice(0, 16) : active ? "" : suggestedUntil());
     setError(null);
     setOpen(true);
   };
   const baselineValue = baseline ?? String(stored.baseline_kw ?? 0.3);
-  const untilValue = until ?? (stored.until ? stored.until.slice(0, 16) : "");
+  const untilValue = until ?? "";
 
   return (
     <Card>
@@ -159,17 +177,39 @@ export function VacationCard() {
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="vacation-until">Ends</Label>
-              <Input
-                id="vacation-until"
-                type="datetime-local"
-                className="w-56"
-                value={untilValue}
-                onChange={(e) => setUntil(e.target.value)}
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  id="vacation-until"
+                  type="datetime-local"
+                  className="w-56"
+                  value={untilValue}
+                  onChange={(e) => setUntil(e.target.value)}
+                />
+                {untilValue ? (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setUntil("")}>
+                    No end time
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setUntil(suggestedUntil())}
+                  >
+                    Pick end time
+                  </Button>
+                )}
+              </div>
+              {/* What will actually be saved — makes a silently-empty picker
+                  (Safari shows today's date at value "") visible before PUT */}
+              <p className="text-xs font-medium">
+                {untilValue
+                  ? `Ends ${new Date(untilValue).toLocaleString()}.`
+                  : "No end time — stays on until you disable it."}
+              </p>
               <p className="text-muted-foreground text-xs">
-                Local time; vacation mode expires on its own — if it lands inside the
-                planning horizon, the plan already covers your return evening. Leave empty
-                to keep it on until you disable it.
+                Local time; vacation mode expires on its own — if the end lands inside the
+                planning horizon, the plan already covers your return evening.
               </p>
             </div>
             {error && <p className="text-destructive text-xs">{error}</p>}

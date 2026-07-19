@@ -63,6 +63,18 @@ def test_dashboard_served_from_dist(tmp_path):
     assert client.get("/api/plan").status_code == 404
 
 
+def test_cache_headers_html_revalidates_assets_immutable(tmp_path):
+    # index.html must revalidate every load (an add-on update swaps the
+    # hashed bundle it points at); the hashed assets can cache forever
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text('<script src="./assets/index-abc.js"></script>')
+    (tmp_path / "assets" / "index-abc.js").write_text("x")
+    client = TestClient(create_app(AppState(), dist_dir=tmp_path))
+    assert client.get("/").headers["cache-control"] == "no-cache"
+    assert "immutable" in client.get("/assets/index-abc.js").headers["cache-control"]
+    assert "cache-control" not in client.get("/api/plan").headers  # untouched
+
+
 def test_missing_dist_says_how_to_build(tmp_path):
     client = TestClient(create_app(AppState(), dist_dir=tmp_path / "nope"))
     resp = client.get("/")

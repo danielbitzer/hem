@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Dashboard updates now show without a force-refresh: `index.html` is served
+  with `Cache-Control: no-cache` (ETag revalidation) so it always points at
+  the current hashed bundle; the hashed assets themselves cache as immutable.
+- Vacation mode dialog: the end-time picker is always pre-filled with a
+  concrete suggestion (tomorrow, next full hour) and a "No end time" button
+  replaces leave-it-empty, with a line stating exactly what will be saved.
+  Safari renders an untouched `datetime-local` with today's date while its
+  value is still empty — end times silently saved as "no end".
+
 ## 0.3.0
 
 - Dashboard: tile "?" help tooltips are proper styled tooltips (shadcn) with

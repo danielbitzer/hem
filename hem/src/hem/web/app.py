@@ -188,6 +188,18 @@ def create_app(
             ]
             return JSONResponse({"entities": entities})
 
+    @app.middleware("http")
+    async def cache_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
+        """Vite assets are content-hashed -> cache forever; index.html points
+        AT those hashes, so it must revalidate every load or an add-on update
+        keeps serving the previous build until a force-refresh."""
+        response = await call_next(request)
+        if request.url.path.startswith("/assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif response.headers.get("content-type", "").startswith("text/html"):
+            response.headers["Cache-Control"] = "no-cache"  # ETag revalidation, cheap 304s
+        return response
+
     if (dist_dir / "index.html").exists():
         # Registered after the API routes, so those match first. html=True
         # serves index.html at "/" and the hashed Vite assets relative to it.
