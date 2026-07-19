@@ -261,6 +261,9 @@ async def run() -> None:
                     log.warning("Home Assistant API not reachable yet; will retry each cycle")
                 publisher = Publisher(client)
                 tz = default_timezone()
+                # Anchors every local-time feature (load buckets, daily SoC
+                # target, vacation end times) — worth one loud line.
+                log.info("local timezone: %s", tz)
                 while True:
                     # No await between clear() and the current read: a PUT
                     # landing after the read re-sets the event and is seen by

@@ -647,13 +647,32 @@ def build_load_forecaster(
     return HistoryLoadForecaster(client, load_power, tz, temp_entity_id=outdoor_temp)
 
 
-def default_timezone() -> ZoneInfo:
-    """Local timezone from the TZ env var (set for HA add-ons); UTC otherwise.
+def _zone_from_localtime(path: str = "/etc/localtime") -> ZoneInfo | None:
+    """System zone from the /etc/localtime symlink (macOS and Linux both point
+    it into a .../zoneinfo/<Area>/<City> tree)."""
+    try:
+        target = os.path.realpath(path)
+        marker = "zoneinfo/"
+        idx = target.find(marker)
+        if idx == -1:
+            return None
+        return ZoneInfo(target[idx + len(marker) :])
+    except (OSError, ValueError, ZoneInfoNotFoundError):
+        return None
 
-    A UTC fallback shifts the learned hour-of-day buckets rather than
-    crashing; a wrong zone shows up as an offset daily shape.
+
+def default_timezone() -> ZoneInfo:
+    """Local timezone: the TZ env var (the Supervisor sets it for add-ons),
+    else the system zone via /etc/localtime (dev shells rarely export TZ),
+    else UTC.
+
+    This zone anchors every local-time feature — learned hour-of-day buckets,
+    the daily SoC target, vacation-mode end times — so a UTC fallback on a
+    dev machine used to shift all of them by the UTC offset (seen live: a
+    vacation end time "4 hours from now" became 13.5 hours of baseline).
     """
     try:
         return ZoneInfo(os.environ["TZ"])
     except (KeyError, ZoneInfoNotFoundError):
-        return ZoneInfo("UTC")
+        pass
+    return _zone_from_localtime() or ZoneInfo("UTC")
