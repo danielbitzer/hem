@@ -105,15 +105,15 @@ export function useDark(): boolean {
 // index.css palette (--chart-grid / --muted-foreground values) per theme —
 // keep in sync.
 export function gridStroke(dark: boolean): string {
-  return dark ? "#222a38" : "#eceff3";
+  return dark ? "#2a2a2a" : "#eceff3";
 }
 
 export function cursorStroke(dark: boolean): string {
-  return dark ? "#8b96a6" : "#69727e";
+  return dark ? "#9b9b9b" : "#69727e";
 }
 
 export function idleSegmentColor(dark: boolean): string {
-  return dark ? "#2a3242" : "#d6dbe1";
+  return dark ? "#3a3a3a" : "#d6dbe1";
 }
 
 export function fmtDayTime(ms: number): string {

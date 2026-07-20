@@ -190,7 +190,7 @@ export function HemChart({
 }
 
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
-const mutedTick = (dark: boolean) => (dark ? "#8b96a6" : "#69727e");
+const mutedTick = (dark: boolean) => (dark ? "#9b9b9b" : "#69727e");
 
 const kw = (_: string, v: number) => `${v.toFixed(2)} kW`;
 const dollars = (_: string, v: number) => `$${v.toFixed(3)}`;
