@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
 
 - **"Why this action?" on the dashboard**: an expandable panel under the
   Action-now hero explains the current interval in plain language and lays
