@@ -1,5 +1,6 @@
-import { type ReactNode, useSyncExternalStore } from "react";
-import type { PlanResponse } from "./api";
+import { ChevronRight } from "lucide-react";
+import { type ReactNode, useState, useSyncExternalStore } from "react";
+import type { Explanation, PlanResponse } from "./api";
 import type { Row } from "./charts";
 import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./components/ui/tooltip";
@@ -76,8 +77,9 @@ function HelpBadge({ label, help }: { label: string; help: string }) {
   );
 }
 
-/** Action-now hero card: the optimiser's current call at a glance. */
-export function Hero({ rows }: { rows: Row[] }) {
+/** Action-now hero card: the optimiser's current call at a glance, with an
+ * expandable "why" panel that narrates the numbers behind it. */
+export function Hero({ rows, explanation }: { rows: Row[]; explanation?: Explanation | null }) {
   const step0 = rows[0];
   if (!step0) return null;
   const forced = step0.action === "charge" || step0.action === "discharge";
@@ -85,29 +87,131 @@ export function Hero({ rows }: { rows: Row[] }) {
     ? `${step0.battery > 0 ? "+" : "−"}${Math.abs(step0.battery).toFixed(1)} kW`
     : "—";
   return (
-    <div className="shadow-card flex items-center justify-between gap-5 rounded-lg border border-border bg-card px-[22px] py-[18px]">
-      <div>
-        <div className="text-[11px] font-semibold tracking-[.09em] text-muted-foreground uppercase">
-          Action now
+    <div className="shadow-card flex flex-col rounded-lg border border-border bg-card px-[22px] py-[18px]">
+      <div className="flex items-center justify-between gap-5">
+        <div>
+          <div className="text-[11px] font-semibold tracking-[.09em] text-muted-foreground uppercase">
+            Action now
+          </div>
+          <div
+            className="mt-1.5 font-mono text-[32px] leading-tight font-semibold capitalize"
+            style={{ color: ACTION_COLORS[step0.action] ?? "var(--action)" }}
+          >
+            {ACTION_LABEL[step0.action] ?? step0.action.replace("_", " ")}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {fmtTime(step0.t)} – {fmtTime(step0.end)} · {ACTION_SUB[step0.action] ?? ""}
+          </div>
         </div>
-        <div
-          className="mt-1.5 font-mono text-[32px] leading-tight font-semibold capitalize"
-          style={{ color: ACTION_COLORS[step0.action] ?? "var(--action)" }}
-        >
-          {ACTION_LABEL[step0.action] ?? step0.action.replace("_", " ")}
-        </div>
-        <div className="mt-1 text-xs text-muted-foreground">
-          {fmtTime(step0.t)} – {fmtTime(step0.end)} · {ACTION_SUB[step0.action] ?? ""}
+        <div className="shrink-0 text-right">
+          <div className="text-[11px] font-semibold tracking-[.09em] text-muted-foreground uppercase">
+            Battery setpoint
+          </div>
+          <div className="mt-1.5 font-mono text-[28px] leading-tight font-semibold text-foreground">
+            {setpoint}
+          </div>
         </div>
       </div>
-      <div className="shrink-0 text-right">
-        <div className="text-[11px] font-semibold tracking-[.09em] text-muted-foreground uppercase">
-          Battery setpoint
+      {explanation && <WhyThisAction explanation={explanation} />}
+    </div>
+  );
+}
+
+const money = (x: number) => `${x < 0 ? "−" : ""}$${Math.abs(x).toFixed(2)}`;
+const kw = (x: number) => `${x.toFixed(1)} kW`;
+
+function batteryText(x: number): { value: string; sub?: string } {
+  if (Math.abs(x) < 0.05) return { value: "idle" };
+  return { value: `${x > 0 ? "+" : "−"}${Math.abs(x).toFixed(1)} kW`, sub: x > 0 ? " charging" : " discharging" };
+}
+
+function gridText(v: Explanation["values"]): string {
+  if (v.grid_export_kw > 0.05) return `exporting ${v.grid_export_kw.toFixed(1)} kW`;
+  if (v.grid_import_kw > 0.05) return `importing ${v.grid_import_kw.toFixed(1)} kW`;
+  return "no grid flow";
+}
+
+function intervalText(cost: number): string {
+  if (Math.abs(cost) < 0.005) return "breaks even this interval";
+  return cost < 0
+    ? `earns $${Math.abs(cost).toFixed(2)} this interval`
+    : `costs $${cost.toFixed(2)} this interval`;
+}
+
+function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div>
+      <dt className="text-[10px] font-semibold tracking-[.05em] text-muted-foreground uppercase">
+        {label}
+      </dt>
+      <dd className="mt-0.5 font-mono text-[13px] text-foreground">
+        {value}
+        {sub && <span className="text-muted-foreground">{sub}</span>}
+      </dd>
+    </div>
+  );
+}
+
+function Chip({ children }: { children: ReactNode }) {
+  return (
+    <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
+function WhyThisAction({ explanation }: { explanation: Explanation }) {
+  const [open, setOpen] = useState(false);
+  const { reason, values: v, context: c, levers: l, stale } = explanation;
+  const bat = batteryText(v.battery_kw);
+  const socSub =
+    v.soc_start_pct != null && v.soc_end_pct != null
+      ? ` ${v.soc_start_pct}→${v.soc_end_pct}%`
+      : undefined;
+  return (
+    <div className="mt-3.5 border-t border-border pt-3">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full cursor-pointer items-center gap-1.5 text-left text-[13px] font-medium text-muted-foreground hover:text-foreground"
+      >
+        <ChevronRight className={`size-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
+        Why this action?
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          <p className="text-[13px] leading-relaxed text-foreground">{reason}</p>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3">
+            <Metric label="Buy" value={money(v.buy)} sub="/kWh" />
+            <Metric label="Feed-in" value={money(v.sell)} sub="/kWh" />
+            <Metric label="Solar" value={kw(v.pv_kw)} />
+            <Metric label="House load" value={kw(v.load_kw)} />
+            <Metric label="Battery" value={bat.value} sub={bat.sub} />
+            <Metric
+              label="SoC"
+              value={`${v.soc_start_kwh.toFixed(1)}→${v.soc_end_kwh.toFixed(1)} kWh`}
+              sub={socSub}
+            />
+          </dl>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[11px] text-muted-foreground">
+            <span>{gridText(v)}</span>
+            <span aria-hidden>·</span>
+            <span>{intervalText(v.interval_cost)}</span>
+            {!stale && c?.hold_value != null && (
+              <>
+                <span aria-hidden>·</span>
+                <span>hold value {money(c.hold_value)}/kWh</span>
+              </>
+            )}
+            {l?.spike_reserve && <Chip>spike reserve {Math.round(l.spike_reserve.kwh)} kWh</Chip>}
+            {l?.daily_target && <Chip>daily charge target</Chip>}
+            {l?.live_spike && <Chip>spike live</Chip>}
+            {l?.prices_estimated && <Chip>price still an estimate</Chip>}
+            {stale && <Chip>reusing previous plan</Chip>}
+          </div>
         </div>
-        <div className="mt-1.5 font-mono text-[28px] leading-tight font-semibold text-foreground">
-          {setpoint}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
