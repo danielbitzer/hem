@@ -26,6 +26,7 @@ from hem.adapters.solar import OpenMeteoSolarAdapter
 from hem.adapters.sungrow import SungrowAdapter
 from hem.adapters.weather import WeatherAdapter
 from hem.config import Settings
+from hem.explain import build_explanation
 from hem.forecast.load import LoadForecaster
 from hem.models import Action, BatteryState, Plan, PriceForecast, Series
 from hem.optimizer.model import (
@@ -366,7 +367,31 @@ class Planner:
             plan.solver_status = solution.status
         plan.live_spike = data.prices.live_spike
         plan = self._live_spike_guard(plan, data)
+        plan.explanation = build_explanation(
+            plan,
+            hold_value=terminal,
+            price_forecast_end=data.price_forecast_end,
+            spike_reserve=self._reserve_info(data),
+            daily_target_active=(
+                data.inputs.soc_target_kwh is not None
+                and bool(np.any(data.inputs.soc_target_kwh > 0))
+            ),
+            live_spike=data.prices.live_spike,
+            prices_estimated=data.prices.current_estimate,
+            capacity_kwh=self._battery_params.capacity_kwh,
+            tz=self._tz,
+        )
         return plan
+
+    def _reserve_info(self, data: CycleData) -> dict | None:
+        """The spike reserve as {kwh, until} for the explanation, or None when
+        it isn't armed this cycle."""
+        reserve = data.inputs.reserve_kwh
+        if reserve is None or not np.any(reserve > 0):
+            return None
+        trigger = int(np.argmin(reserve > 0))  # first step the floor drops to 0
+        until = data.grid.steps[trigger].start if trigger < len(data.grid.steps) else None
+        return {"kwh": float(reserve[0]), "until": until.isoformat() if until else None}
 
     def _apply_hysteresis(self, free, data: CycleData, opt_config: OptimizerConfig):
         """Only switch away from the previous action if the free solution beats
@@ -434,6 +459,7 @@ class Planner:
         remaining = [iv for iv in prev.intervals if iv.end > now]
         if not remaining:
             raise SolverError("solver failed and previous plan is fully elapsed")
+        s0 = remaining[0]
         return Plan(
             intervals=remaining,
             objective_cost=prev.objective_cost,
@@ -443,6 +469,27 @@ class Planner:
             # carry the spike flag so the published live_spike attribute stays
             # truthful while a fallback plan is in effect
             live_spike=prev.live_spike,
+            # The full context is gone with the failed solve; give the panel the
+            # step-0 values and an honest note rather than a stale reason.
+            explanation={
+                "reason": (
+                    "Reusing the previous plan — the latest solve failed, so HEM shifted "
+                    "the last good plan forward. Values are from that plan."
+                ),
+                "values": {
+                    "buy": s0.buy,
+                    "sell": s0.sell,
+                    "pv_kw": s0.pv_kw,
+                    "load_kw": s0.load_kw,
+                    "soc_start_kwh": round(s0.soc_start, 2),
+                    "soc_end_kwh": round(s0.soc_end, 2),
+                    "battery_kw": s0.power_kw,
+                    "grid_import_kw": s0.grid_import_kw,
+                    "grid_export_kw": s0.grid_export_kw,
+                    "interval_cost": s0.interval_cost,
+                },
+                "stale": True,
+            },
         )
 
 

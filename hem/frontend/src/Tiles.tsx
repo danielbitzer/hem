@@ -1,5 +1,6 @@
-import { type ReactNode, useSyncExternalStore } from "react";
-import type { PlanResponse } from "./api";
+import { ChevronRight } from "lucide-react";
+import { type ReactNode, useState, useSyncExternalStore } from "react";
+import type { Explanation, PlanResponse } from "./api";
 import type { Row } from "./charts";
 import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./components/ui/tooltip";
@@ -25,6 +26,21 @@ const HORIZON_COST_HELP =
   "Negative = net earnings. Excludes battery wear cost and the value of " +
   "energy still stored at the horizon end, so a plan that ends with a full " +
   "battery looks 'worse' than one that sold everything.";
+
+const METER_HELP =
+  "Net cash across your grid meter this interval: energy imported at the buy " +
+  "price minus energy exported at the feed-in price. Excludes battery wear " +
+  "and the value of energy moved in or out of the battery, so it can read " +
+  "$0.00 while the battery is busy charging from solar. The per-interval " +
+  "sibling of the Horizon cost tile.";
+
+const HOLD_VALUE_HELP =
+  "What HEM reckons a kWh still in the battery at the end of its 36-hour " +
+  "horizon is worth to you — roughly the typical import price, less " +
+  "round-trip losses and battery wear. It stops the plan from draining the " +
+  "battery just because the horizon ends, and it's the break-even the " +
+  "current feed-in price is weighed against before selling: sell above it, " +
+  "hold below it.";
 
 const ACTION_LABEL: Record<string, string> = {
   charge: "charging",
@@ -76,8 +92,9 @@ function HelpBadge({ label, help }: { label: string; help: string }) {
   );
 }
 
-/** Action-now hero card: the optimiser's current call at a glance. */
-export function Hero({ rows }: { rows: Row[] }) {
+/** Action-now hero card: the optimiser's current call at a glance, with an
+ * expandable "why" panel that narrates the numbers behind it. */
+export function Hero({ rows, explanation }: { rows: Row[]; explanation?: Explanation | null }) {
   const step0 = rows[0];
   if (!step0) return null;
   const forced = step0.action === "charge" || step0.action === "discharge";
@@ -85,29 +102,152 @@ export function Hero({ rows }: { rows: Row[] }) {
     ? `${step0.battery > 0 ? "+" : "−"}${Math.abs(step0.battery).toFixed(1)} kW`
     : "—";
   return (
-    <div className="shadow-card flex items-center justify-between gap-5 rounded-lg border border-border bg-card px-[22px] py-[18px]">
-      <div>
-        <div className="text-[11px] font-semibold tracking-[.09em] text-muted-foreground uppercase">
-          Action now
+    <div className="shadow-card flex flex-col rounded-lg border border-border bg-card px-[22px] py-[18px]">
+      <div className="flex items-center justify-between gap-5">
+        <div>
+          <div className="text-[11px] font-semibold tracking-[.09em] text-muted-foreground uppercase">
+            Action now
+          </div>
+          <div
+            className="mt-1.5 font-mono text-[32px] leading-tight font-semibold capitalize"
+            style={{ color: ACTION_COLORS[step0.action] ?? "var(--action)" }}
+          >
+            {ACTION_LABEL[step0.action] ?? step0.action.replace("_", " ")}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {fmtTime(step0.t)} – {fmtTime(step0.end)} · {ACTION_SUB[step0.action] ?? ""}
+          </div>
         </div>
-        <div
-          className="mt-1.5 font-mono text-[32px] leading-tight font-semibold capitalize"
-          style={{ color: ACTION_COLORS[step0.action] ?? "var(--action)" }}
-        >
-          {ACTION_LABEL[step0.action] ?? step0.action.replace("_", " ")}
-        </div>
-        <div className="mt-1 text-xs text-muted-foreground">
-          {fmtTime(step0.t)} – {fmtTime(step0.end)} · {ACTION_SUB[step0.action] ?? ""}
+        <div className="shrink-0 text-right">
+          <div className="text-[11px] font-semibold tracking-[.09em] text-muted-foreground uppercase">
+            Battery setpoint
+          </div>
+          <div className="mt-1.5 font-mono text-[28px] leading-tight font-semibold text-foreground">
+            {setpoint}
+          </div>
         </div>
       </div>
-      <div className="shrink-0 text-right">
-        <div className="text-[11px] font-semibold tracking-[.09em] text-muted-foreground uppercase">
-          Battery setpoint
+      {explanation && <WhyThisAction explanation={explanation} />}
+    </div>
+  );
+}
+
+const money = (x: number) => `${x < 0 ? "−" : ""}$${Math.abs(x).toFixed(2)}`;
+const kw = (x: number) => `${x.toFixed(1)} kW`;
+
+function batteryText(x: number): { value: string; sub?: string } {
+  if (Math.abs(x) < 0.05) return { value: "idle" };
+  return { value: `${x > 0 ? "+" : "−"}${Math.abs(x).toFixed(1)} kW`, sub: x > 0 ? " charging" : " discharging" };
+}
+
+function gridMetric(v: Explanation["values"]): { value: string; sub?: string } {
+  if (v.grid_export_kw > 0.05) return { value: kw(v.grid_export_kw), sub: " exporting" };
+  if (v.grid_import_kw > 0.05) return { value: kw(v.grid_import_kw), sub: " importing" };
+  return { value: "—" };
+}
+
+// Net cash at the grid meter this interval (see METER_HELP). interval_cost is
+// signed: negative = export earnings, positive = import cost, ~0 = no flow.
+function meterText(cost: number): { value: string; sub: string } {
+  if (Math.abs(cost) < 0.005) return { value: "$0.00", sub: " net" };
+  return cost < 0
+    ? { value: `$${Math.abs(cost).toFixed(2)}`, sub: " earned" }
+    : { value: `$${cost.toFixed(2)}`, sub: " cost" };
+}
+
+function Metric({
+  label,
+  value,
+  sub,
+  help,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  help?: string;
+}) {
+  return (
+    <div>
+      <dt className="text-[10px] font-semibold tracking-[.05em] text-muted-foreground uppercase">
+        {label}
+        {help && <HelpBadge label={label} help={help} />}
+      </dt>
+      <dd className="mt-0.5 font-mono text-[13px] text-foreground">
+        {value}
+        {sub && <span className="text-muted-foreground">{sub}</span>}
+      </dd>
+    </div>
+  );
+}
+
+function Chip({ children }: { children: ReactNode }) {
+  return (
+    <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
+function WhyThisAction({ explanation }: { explanation: Explanation }) {
+  const [open, setOpen] = useState(false);
+  const { reason, values: v, context: c, levers: l, stale } = explanation;
+  const bat = batteryText(v.battery_kw);
+  const grid = gridMetric(v);
+  const meter = meterText(v.interval_cost);
+  const chips = [
+    l?.spike_reserve && (
+      <Chip key="reserve">spike reserve {Math.round(l.spike_reserve.kwh)} kWh</Chip>
+    ),
+    l?.daily_target && <Chip key="target">daily charge target</Chip>,
+    l?.live_spike && <Chip key="spike">spike live</Chip>,
+    l?.prices_estimated && <Chip key="estimate">price still an estimate</Chip>,
+    stale && <Chip key="stale">reusing previous plan</Chip>,
+  ].filter(Boolean);
+  const socSub =
+    v.soc_start_pct != null && v.soc_end_pct != null
+      ? ` ${v.soc_start_pct}→${v.soc_end_pct}%`
+      : undefined;
+  return (
+    <div className="mt-3.5 border-t border-border pt-3">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full cursor-pointer items-center gap-1.5 text-left text-[13px] font-medium text-muted-foreground hover:text-foreground"
+      >
+        <ChevronRight className={`size-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
+        Why this action?
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          <p className="text-[13px] leading-relaxed text-foreground">{reason}</p>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3">
+            <Metric label="Buy" value={money(v.buy)} sub="/kWh" />
+            <Metric label="Feed-in" value={money(v.sell)} sub="/kWh" />
+            <Metric label="Solar" value={kw(v.pv_kw)} />
+            <Metric label="House load" value={kw(v.load_kw)} />
+            <Metric label="Battery" value={bat.value} sub={bat.sub} />
+            <Metric label="Grid" value={grid.value} sub={grid.sub} />
+            <Metric
+              label="SoC"
+              value={`${v.soc_start_kwh.toFixed(1)}→${v.soc_end_kwh.toFixed(1)} kWh`}
+              sub={socSub}
+            />
+            <Metric label="Meter" value={meter.value} sub={meter.sub} help={METER_HELP} />
+            {!stale && c?.hold_value != null && (
+              <Metric
+                label="Hold value"
+                value={money(c.hold_value)}
+                sub="/kWh"
+                help={HOLD_VALUE_HELP}
+              />
+            )}
+          </dl>
+          {chips.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">{chips}</div>
+          )}
         </div>
-        <div className="mt-1.5 font-mono text-[28px] leading-tight font-semibold text-foreground">
-          {setpoint}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

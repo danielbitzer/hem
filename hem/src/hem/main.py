@@ -141,6 +141,8 @@ async def cycle(
         "load_forecast": data.load_forecast_status,
         "load_forecast_info": data.load_forecast_info,
         "vacation": data.vacation,
+        # plain-language "why this action" for the dashboard (see hem.explain)
+        "explanation": plan.explanation,
         # step-0 prices are Amber's estimate, not yet AEMO-confirmed — the
         # dashboard marks the price tile; the estimate->confirmed sensor
         # update triggers a re-solve that clears this within seconds. On a

@@ -112,3 +112,6 @@ class Plan:
     # True when the plan was computed during a confirmed price spike; published
     # as an attribute so actuator automations can special-case spikes.
     live_spike: bool = False
+    # Plain-language explanation of step 0's action (see hem.explain); surfaced
+    # in the dashboard's "Why this action?" panel, not published as a sensor.
+    explanation: dict | None = None

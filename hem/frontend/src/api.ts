@@ -48,6 +48,47 @@ export const VacationInfoSchema = z.object({
 });
 export type VacationInfo = z.infer<typeof VacationInfoSchema>;
 
+// "Why this action" — a plain-language explanation of the current interval
+// plus the numbers behind it (see hem/explain.py). Loose sub-objects: the
+// backend may add fields, and the fallback path omits context/levers.
+export const ExplanationSchema = z.object({
+  reason: z.string(),
+  values: z.looseObject({
+    buy: z.number(),
+    sell: z.number(),
+    pv_kw: z.number(),
+    load_kw: z.number(),
+    soc_start_kwh: z.number(),
+    soc_end_kwh: z.number(),
+    soc_start_pct: z.number().optional(),
+    soc_end_pct: z.number().optional(),
+    battery_kw: z.number(),
+    grid_import_kw: z.number(),
+    grid_export_kw: z.number(),
+    interval_cost: z.number(),
+  }),
+  context: z
+    .looseObject({
+      sell_rank: z.number().optional(),
+      buy_rank: z.number().optional(),
+      horizon_steps: z.number().optional(),
+      hold_value: z.number().optional(),
+      flat: z.boolean().optional(),
+      hysteresis: z.boolean().optional(),
+    })
+    .optional(),
+  levers: z
+    .looseObject({
+      spike_reserve: z.object({ kwh: z.number(), until: z.string().nullish() }).nullish(),
+      daily_target: z.boolean().optional(),
+      live_spike: z.boolean().optional(),
+      prices_estimated: z.boolean().optional(),
+    })
+    .optional(),
+  stale: z.boolean().optional(),
+});
+export type Explanation = z.infer<typeof ExplanationSchema>;
+
 // meta is a loose object: the backend adds informational keys over time and
 // the UI should keep working (and keep validating) without listing them all.
 export const PlanMetaSchema = z.looseObject({
@@ -58,6 +99,7 @@ export const PlanMetaSchema = z.looseObject({
   load_forecast_info: LoadForecastInfoSchema.optional(),
   vacation: VacationInfoSchema.nullish(),
   prices_estimated: z.boolean().optional(),
+  explanation: ExplanationSchema.nullish(),
 });
 export type PlanMeta = z.infer<typeof PlanMetaSchema>;
 

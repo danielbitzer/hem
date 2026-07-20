@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **"Why this action?" on the dashboard**: an expandable panel under the
+  Action-now hero explains the current interval in plain language and lays
+  out the numbers behind it — buy/feed-in prices, solar, house load,
+  battery power, SoC start→end, the grid flow and the interval's $ result,
+  plus the price's rank in the forecast, the "hold value" it's weighed
+  against (with a "?" tooltip explaining what the hold value is), and which
+  levers are armed (spike reserve, daily target, live
+  spike, estimated price). The reason is a faithful narration of the plan,
+  not a guess: the MILP emits a schedule, and the panel reconstructs the
+  economics that make that schedule optimal.
+
 ## 0.5.2
 
 - Fix the dashboard not scrolling in Home Assistant's iOS companion app
