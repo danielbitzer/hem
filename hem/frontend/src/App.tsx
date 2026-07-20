@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { type ConfigResponse, fetchConfig, fetchPlanOrExplain, type PlanResponse } from "./api";
 import { BatteryChart, ForecastChart, PricesChart, type Row, SocChart } from "./charts";
+import { installIosScrollKick } from "./iosScrollKick";
 import { ModeStrip } from "./ModeStrip";
 import { SettingsView } from "./settings/SettingsView";
 import { Hero, Stats } from "./Tiles";
@@ -26,6 +27,9 @@ export function App() {
     refetchInterval: REFRESH_MS,
     retry: false,
   });
+  // Work around a WKWebView scroll bug in HA's iOS app (ingress iframe won't
+  // scroll until it gains focus). Harmless everywhere else. See the module.
+  useEffect(() => installIosScrollKick(), []);
   // A fresh install lands (and STAYS — hence pinning it as the chosen view,
   // or the first successful save would yank the user to the dashboard) in
   // Settings; once the user navigates, their choice wins.
