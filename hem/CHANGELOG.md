@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.2
 
 - Fix the dashboard not scrolling in Home Assistant's iOS companion app
   until you tapped a button. HA renders ingress pages in an iframe inside
