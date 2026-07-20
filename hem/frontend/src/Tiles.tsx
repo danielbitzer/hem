@@ -27,6 +27,13 @@ const HORIZON_COST_HELP =
   "energy still stored at the horizon end, so a plan that ends with a full " +
   "battery looks 'worse' than one that sold everything.";
 
+const METER_HELP =
+  "Net cash across your grid meter this interval: energy imported at the buy " +
+  "price minus energy exported at the feed-in price. Excludes battery wear " +
+  "and the value of energy moved in or out of the battery, so it can read " +
+  "$0.00 while the battery is busy charging from solar. The per-interval " +
+  "sibling of the Horizon cost tile.";
+
 const HOLD_VALUE_HELP =
   "What HEM reckons a kWh still in the battery at the end of its 36-hour " +
   "horizon is worth to you — roughly the typical import price, less " +
@@ -139,18 +146,31 @@ function gridText(v: Explanation["values"]): string {
   return "no grid flow";
 }
 
-function intervalText(cost: number): string {
-  if (Math.abs(cost) < 0.005) return "breaks even this interval";
+// Net cash at the grid meter this interval (see METER_HELP). interval_cost is
+// signed: negative = export earnings, positive = import cost, ~0 = no flow.
+function meterText(cost: number): { value: string; sub: string } {
+  if (Math.abs(cost) < 0.005) return { value: "$0.00", sub: " net" };
   return cost < 0
-    ? `earns $${Math.abs(cost).toFixed(2)} this interval`
-    : `costs $${cost.toFixed(2)} this interval`;
+    ? { value: `$${Math.abs(cost).toFixed(2)}`, sub: " earned" }
+    : { value: `$${cost.toFixed(2)}`, sub: " cost" };
 }
 
-function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Metric({
+  label,
+  value,
+  sub,
+  help,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  help?: string;
+}) {
   return (
     <div>
       <dt className="text-[10px] font-semibold tracking-[.05em] text-muted-foreground uppercase">
         {label}
+        {help && <HelpBadge label={label} help={help} />}
       </dt>
       <dd className="mt-0.5 font-mono text-[13px] text-foreground">
         {value}
@@ -172,6 +192,7 @@ function WhyThisAction({ explanation }: { explanation: Explanation }) {
   const [open, setOpen] = useState(false);
   const { reason, values: v, context: c, levers: l, stale } = explanation;
   const bat = batteryText(v.battery_kw);
+  const meter = meterText(v.interval_cost);
   const socSub =
     v.soc_start_pct != null && v.soc_end_pct != null
       ? ` ${v.soc_start_pct}→${v.soc_end_pct}%`
@@ -201,20 +222,18 @@ function WhyThisAction({ explanation }: { explanation: Explanation }) {
               value={`${v.soc_start_kwh.toFixed(1)}→${v.soc_end_kwh.toFixed(1)} kWh`}
               sub={socSub}
             />
+            <Metric label="Meter" value={meter.value} sub={meter.sub} help={METER_HELP} />
+            {!stale && c?.hold_value != null && (
+              <Metric
+                label="Hold value"
+                value={money(c.hold_value)}
+                sub="/kWh"
+                help={HOLD_VALUE_HELP}
+              />
+            )}
           </dl>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[11px] text-muted-foreground">
             <span>{gridText(v)}</span>
-            <span aria-hidden>·</span>
-            <span>{intervalText(v.interval_cost)}</span>
-            {!stale && c?.hold_value != null && (
-              <>
-                <span aria-hidden>·</span>
-                <span className="inline-flex items-center">
-                  hold value {money(c.hold_value)}/kWh
-                  <HelpBadge label="hold value" help={HOLD_VALUE_HELP} />
-                </span>
-              </>
-            )}
             {l?.spike_reserve && <Chip>spike reserve {Math.round(l.spike_reserve.kwh)} kWh</Chip>}
             {l?.daily_target && <Chip>daily charge target</Chip>}
             {l?.live_spike && <Chip>spike live</Chip>}
