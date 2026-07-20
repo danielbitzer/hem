@@ -115,11 +115,17 @@ export function VacationCard() {
             </>
           )}
         </CardDescription>
-        <CardAction>
+        {/* On phones the long active label ("Vacation mode on · ends …") would
+            squeeze the description into a sliver in the header's [1fr_auto]
+            grid — drop the action onto its own full-width row instead. */}
+        <CardAction className="max-sm:col-span-2 max-sm:col-start-1 max-sm:row-span-1 max-sm:row-start-3 max-sm:justify-self-stretch">
           <Button
             type="button"
             variant={active ? "default" : "outline"}
-            className={active ? "rounded-md" : "rounded-md bg-secondary"}
+            className={
+              (active ? "rounded-md" : "rounded-md bg-secondary") +
+              " max-sm:h-auto max-sm:w-full max-sm:whitespace-normal"
+            }
             disabled={!config.data?.configured}
             onClick={openDialog}
           >
@@ -163,7 +169,7 @@ export function VacationCard() {
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="vacation-until">Ends</Label>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {untilValue ? (
                   <>
                     <Input
@@ -207,7 +213,7 @@ export function VacationCard() {
               <Button
                 type="button"
                 variant="destructive"
-                className="mr-auto"
+                className="sm:mr-auto"
                 disabled={save.isPending}
                 onClick={() => save.mutate({ ...stored, enabled: false })}
               >

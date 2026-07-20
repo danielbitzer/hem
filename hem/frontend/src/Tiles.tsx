@@ -1,8 +1,23 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useSyncExternalStore } from "react";
 import type { PlanResponse } from "./api";
 import type { Row } from "./charts";
+import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./components/ui/tooltip";
 import { ACTION_COLORS, fmtTime, SERIES } from "./theme";
+
+// Hover tooltips never open on touch screens — swap in a tap-to-open
+// popover (styled like the tooltip) when the device can't hover.
+const HOVER_NONE = window.matchMedia("(hover: none)");
+
+function useTouchUI(): boolean {
+  return useSyncExternalStore(
+    (notify) => {
+      HOVER_NONE.addEventListener("change", notify);
+      return () => HOVER_NONE.removeEventListener("change", notify);
+    },
+    () => HOVER_NONE.matches,
+  );
+}
 
 const HORIZON_COST_HELP =
   "Expected net cash flow at the meter over the plan horizon: planned grid " +
@@ -28,17 +43,32 @@ const ACTION_SUB: Record<string, string> = {
 };
 
 function HelpBadge({ label, help }: { label: string; help: string }) {
+  const touch = useTouchUI();
+  const trigger = (
+    <button
+      type="button"
+      aria-label={`About ${label}`}
+      className="ml-1.5 inline-block size-[13px] cursor-help rounded-full border border-muted-foreground/50 text-center text-[9px] leading-3 normal-case"
+    >
+      ?
+    </button>
+  );
+  if (touch) {
+    return (
+      <Popover>
+        <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+        <PopoverContent
+          side="bottom"
+          className="w-fit max-w-72 border-none bg-foreground px-3 py-1.5 text-xs text-background"
+        >
+          {help}
+        </PopoverContent>
+      </Popover>
+    );
+  }
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label={`About ${label}`}
-          className="ml-1.5 inline-block size-[13px] cursor-help rounded-full border border-muted-foreground/50 text-center text-[9px] leading-3 normal-case"
-        >
-          ?
-        </button>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
       <TooltipContent side="bottom" className="max-w-72">
         {help}
       </TooltipContent>

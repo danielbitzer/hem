@@ -157,7 +157,11 @@ function SettingsForm({ initialConfig }: { initialConfig: Record<string, unknown
 
   return (
     <form
-      className="mx-auto max-w-3xl space-y-4"
+      // w-full matters: with mx-auto the flex parent can't stretch this
+      // (auto cross-axis margins disable it), and shrink-to-fit sizing is
+      // floored by min-content — one wide entity label would widen the form
+      // past the viewport and every card with it.
+      className="mx-auto w-full max-w-3xl space-y-4"
       // The server (pydantic) is the validation authority — native browser
       // validation would reject values it accepts (e.g. step mismatches like
       // a 0.12 daily target against step=0.05) with a bubble instead of our
@@ -282,7 +286,7 @@ function AppearanceCard() {
           Light, dark, or follow this device's preference. Applies immediately and is
           remembered in this browser only.
         </CardDescription>
-        <CardAction>
+        <CardAction className="max-sm:col-span-2 max-sm:col-start-1 max-sm:row-span-1 max-sm:row-start-3 max-sm:justify-self-start">
           <Select value={pref} onValueChange={(v) => setThemePref(v as ThemePref)}>
             <SelectTrigger className="w-32">
               <SelectValue />
@@ -319,7 +323,10 @@ function FieldRow({
         {spec.required && <span className="text-destructive"> *</span>}
         {spec.unit && <span className="text-muted-foreground font-normal"> ({spec.unit})</span>}
       </Label>
-      <div className="space-y-1">
+      {/* min-w-0: let the cell shrink below its content so the entity
+          picker's long selected label truncates instead of setting the
+          grid track (and the whole page) wider than the screen */}
+      <div className="min-w-0 space-y-1">
         {spec.kind === "entity" && (
           <EntityPicker
             value={String(value)}

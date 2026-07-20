@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Settings page is now phone-friendly. The big one: a long selected entity
+  label made the whole form (and every card) wider than the screen — the
+  form now has a definite width and the entity picker's label truncates
+  with an ellipsis. Also: the vacation and theme card actions drop onto
+  their own full-width row instead of squeezing the description into a
+  sliver, the vacation dialog's end-time row wraps, its footer buttons
+  stack full-width, and the header's tab switcher wraps below the title.
+  Verified overflow-free down to 320 px wide.
+- Dashboard tile "?" help now works on touch screens: devices that can't
+  hover get a tap-to-open popover styled like the desktop tooltip.
+
 ## 0.5.0
 
 - **Theme setting** (Settings → Theme): choose Light, Dark, or System

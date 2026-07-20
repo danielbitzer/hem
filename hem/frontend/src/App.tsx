@@ -40,7 +40,7 @@ export function App() {
     <div className="min-h-screen">
       {/* Full-bleed header bar; its content aligns with the capped main column */}
       <header className="border-b border-border bg-card px-[22px] py-[18px]">
-        <div className="mx-auto flex max-w-[960px] items-start justify-between gap-4">
+        <div className="mx-auto flex max-w-[960px] flex-wrap items-start justify-between gap-x-4 gap-y-2.5">
           <div className="min-w-0">
             <h1 className="text-[17px] font-bold text-foreground">Home Energy Manager</h1>
             {plan.data && (
