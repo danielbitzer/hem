@@ -27,6 +27,14 @@ const HORIZON_COST_HELP =
   "energy still stored at the horizon end, so a plan that ends with a full " +
   "battery looks 'worse' than one that sold everything.";
 
+const HOLD_VALUE_HELP =
+  "What HEM reckons a kWh still in the battery at the end of its 36-hour " +
+  "horizon is worth to you — roughly the typical import price, less " +
+  "round-trip losses and battery wear. It stops the plan from draining the " +
+  "battery just because the horizon ends, and it's the break-even the " +
+  "current feed-in price is weighed against before selling: sell above it, " +
+  "hold below it.";
+
 const ACTION_LABEL: Record<string, string> = {
   charge: "charging",
   discharge: "discharging",
@@ -201,7 +209,10 @@ function WhyThisAction({ explanation }: { explanation: Explanation }) {
             {!stale && c?.hold_value != null && (
               <>
                 <span aria-hidden>·</span>
-                <span>hold value {money(c.hold_value)}/kWh</span>
+                <span className="inline-flex items-center">
+                  hold value {money(c.hold_value)}/kWh
+                  <HelpBadge label="hold value" help={HOLD_VALUE_HELP} />
+                </span>
               </>
             )}
             {l?.spike_reserve && <Chip>spike reserve {Math.round(l.spike_reserve.kwh)} kWh</Chip>}
