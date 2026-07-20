@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Fix the dashboard not scrolling in Home Assistant's iOS companion app
+  until you tapped a button. HA renders ingress pages in an iframe inside
+  a WKWebView, and WebKit doesn't activate the subframe's touch-scrolling
+  until it gains focus; HEM now nudges focus + a 1px scroll on load and on
+  first interaction so scrolling works immediately. Safari (which loads the
+  page directly, not in a subframe) was never affected.
+
 ## 0.5.1
 
 - Dark mode neutrals now track Home Assistant's default dark theme
