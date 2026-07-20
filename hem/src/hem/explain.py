@@ -119,8 +119,7 @@ def _reason(
         )
     else:
         lead = (
-            f"Self-consumption — nothing beats holding at {_fmt_price(s0.buy)}/kWh buy, "
-            f"{_fmt_price(s0.sell)}/kWh sell right now"
+            f"Self-consumption — nothing beats holding at right now"
         )
     tail = (
         f"; {', '.join(holds)}"
