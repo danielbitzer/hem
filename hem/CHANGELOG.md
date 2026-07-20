@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Dark mode neutrals now track Home Assistant's default dark theme
+  (near-black `#111` canvas, `#1c1c1c` cards, `#202020` insets,
+  `#e1e1e1`/`#9b9b9b` text, faint divider borders) so the add-on sits
+  comfortably beside HA's own dark UI, in place of the previous
+  blue-tinted greys. The accent colours and bright chart series are
+  unchanged; neutral chart gridlines/ticks track the new palette.
 - Settings page is now phone-friendly. The big one: a long selected entity
   label made the whole form (and every card) wider than the screen — the
   form now has a definite width and the entity picker's label truncates
@@ -10,6 +16,12 @@
   sliver, the vacation dialog's end-time row wraps, its footer buttons
   stack full-width, and the header's tab switcher wraps below the title.
   Verified overflow-free down to 320 px wide.
+- More mobile polish: on the vacation and theme cards the heading now sits
+  on its own row above the description (was cramped beside it), and the
+  vacation button is full-width with a comfortable tap target. The header
+  meta line wraps instead of truncating to "… interv…", and the
+  Dashboard/Settings switcher becomes a full-width segmented control whose
+  active tab reads as a raised surface distinct from the bar.
 - Dashboard tile "?" help now works on touch screens: devices that can't
   hover get a tap-to-open popover styled like the desktop tooltip.
 

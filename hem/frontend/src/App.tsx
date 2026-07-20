@@ -41,10 +41,12 @@ export function App() {
       {/* Full-bleed header bar; its content aligns with the capped main column */}
       <header className="border-b border-border bg-card px-[22px] py-[18px]">
         <div className="mx-auto flex max-w-[960px] flex-wrap items-start justify-between gap-x-4 gap-y-2.5">
-          <div className="min-w-0">
+          <div className="min-w-0 max-sm:w-full">
             <h1 className="text-[17px] font-bold text-foreground">Home Energy Manager</h1>
             {plan.data && (
-              <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+              // Truncates to one line on desktop; wraps on phones (where the
+              // full-width header has room) instead of clipping to "79 interv…".
+              <div className="mt-1 min-w-0 font-mono text-xs text-muted-foreground sm:truncate">
                 {metaLine(plan.data)}
               </div>
             )}
@@ -52,7 +54,10 @@ export function App() {
               <div className="mt-1 text-xs text-destructive">{plan.error.message}</div>
             )}
           </div>
-          <nav className="flex shrink-0 gap-[3px] rounded-full bg-tab-bg p-[3px]">
+          {/* Full-width segmented toggle on phones; compact pill on desktop.
+              The track is a dark inset (bg-tab-bg) and the active tab a raised
+              surface so the two read as distinct from the header bar. */}
+          <nav className="flex shrink-0 gap-[3px] rounded-full bg-tab-bg p-[3px] max-sm:w-full">
             {(["dashboard", "settings"] as const).map((v) => (
               <button
                 key={v}
@@ -60,9 +65,9 @@ export function App() {
                 aria-current={view === v ? "page" : undefined}
                 onClick={() => setChosenView(v)}
                 className={
-                  "cursor-pointer rounded-full border-none px-4 py-[7px] text-[13px] font-semibold transition-all " +
+                  "cursor-pointer rounded-full border-none px-4 py-[7px] text-[13px] font-semibold transition-all max-sm:flex-1 max-sm:py-2 " +
                   (view === v
-                    ? "bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.12)]"
+                    ? "bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.12)] dark:bg-[#2c2c2c] dark:shadow-none"
                     : "bg-transparent text-muted-foreground hover:text-foreground")
                 }
               >
