@@ -280,15 +280,15 @@ function AppearanceCard() {
   const pref = useThemePref();
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="max-sm:flex max-sm:flex-col max-sm:gap-2">
         <CardTitle>Theme</CardTitle>
         <CardDescription>
           Light, dark, or follow this device's preference. Applies immediately and is
           remembered in this browser only.
         </CardDescription>
-        <CardAction className="max-sm:col-span-2 max-sm:col-start-1 max-sm:row-span-1 max-sm:row-start-3 max-sm:justify-self-start">
+        <CardAction className="max-sm:w-full">
           <Select value={pref} onValueChange={(v) => setThemePref(v as ThemePref)}>
-            <SelectTrigger className="w-32">
+            <SelectTrigger className="w-32 max-sm:w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

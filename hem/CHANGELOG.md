@@ -16,6 +16,12 @@
   sliver, the vacation dialog's end-time row wraps, its footer buttons
   stack full-width, and the header's tab switcher wraps below the title.
   Verified overflow-free down to 320 px wide.
+- More mobile polish: on the vacation and theme cards the heading now sits
+  on its own row above the description (was cramped beside it), and the
+  vacation button is full-width with a comfortable tap target. The header
+  meta line wraps instead of truncating to "… interv…", and the
+  Dashboard/Settings switcher becomes a full-width segmented control whose
+  active tab reads as a raised surface distinct from the bar.
 - Dashboard tile "?" help now works on touch screens: devices that can't
   hover get a tap-to-open popover styled like the desktop tooltip.
 

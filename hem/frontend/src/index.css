@@ -68,7 +68,7 @@
   --ring: oklch(0.68 0.14 250);
   --action: oklch(0.66 0.17 300);
   --chart-grid: #2a2a2a;
-  --tab-bg: #202020;
+  --tab-bg: #0f0f0f; /* dark inset under the raised active tab */
   --seg-idle: #3a3a3a;
   --card-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }

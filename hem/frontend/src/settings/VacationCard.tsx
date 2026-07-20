@@ -100,7 +100,9 @@ export function VacationCard() {
 
   return (
     <Card>
-      <CardHeader>
+      {/* On phones stack title → description → action (the header grid would
+          otherwise put the description beside the title and cramp both). */}
+      <CardHeader className="max-sm:flex max-sm:flex-col max-sm:gap-2">
         <CardTitle>Vacation mode</CardTitle>
         <CardDescription>
           {active ? (
@@ -115,16 +117,13 @@ export function VacationCard() {
             </>
           )}
         </CardDescription>
-        {/* On phones the long active label ("Vacation mode on · ends …") would
-            squeeze the description into a sliver in the header's [1fr_auto]
-            grid — drop the action onto its own full-width row instead. */}
-        <CardAction className="max-sm:col-span-2 max-sm:col-start-1 max-sm:row-span-1 max-sm:row-start-3 max-sm:justify-self-stretch">
+        <CardAction className="max-sm:w-full">
           <Button
             type="button"
             variant={active ? "default" : "outline"}
             className={
               (active ? "rounded-md" : "rounded-md bg-secondary") +
-              " max-sm:h-auto max-sm:w-full max-sm:whitespace-normal"
+              " max-sm:h-auto max-sm:w-full max-sm:whitespace-normal max-sm:py-3 max-sm:text-[15px]"
             }
             disabled={!config.data?.configured}
             onClick={openDialog}
