@@ -140,10 +140,10 @@ function batteryText(x: number): { value: string; sub?: string } {
   return { value: `${x > 0 ? "+" : "−"}${Math.abs(x).toFixed(1)} kW`, sub: x > 0 ? " charging" : " discharging" };
 }
 
-function gridText(v: Explanation["values"]): string {
-  if (v.grid_export_kw > 0.05) return `exporting ${v.grid_export_kw.toFixed(1)} kW`;
-  if (v.grid_import_kw > 0.05) return `importing ${v.grid_import_kw.toFixed(1)} kW`;
-  return "no grid flow";
+function gridMetric(v: Explanation["values"]): { value: string; sub?: string } {
+  if (v.grid_export_kw > 0.05) return { value: kw(v.grid_export_kw), sub: " exporting" };
+  if (v.grid_import_kw > 0.05) return { value: kw(v.grid_import_kw), sub: " importing" };
+  return { value: "—" };
 }
 
 // Net cash at the grid meter this interval (see METER_HELP). interval_cost is
@@ -192,7 +192,17 @@ function WhyThisAction({ explanation }: { explanation: Explanation }) {
   const [open, setOpen] = useState(false);
   const { reason, values: v, context: c, levers: l, stale } = explanation;
   const bat = batteryText(v.battery_kw);
+  const grid = gridMetric(v);
   const meter = meterText(v.interval_cost);
+  const chips = [
+    l?.spike_reserve && (
+      <Chip key="reserve">spike reserve {Math.round(l.spike_reserve.kwh)} kWh</Chip>
+    ),
+    l?.daily_target && <Chip key="target">daily charge target</Chip>,
+    l?.live_spike && <Chip key="spike">spike live</Chip>,
+    l?.prices_estimated && <Chip key="estimate">price still an estimate</Chip>,
+    stale && <Chip key="stale">reusing previous plan</Chip>,
+  ].filter(Boolean);
   const socSub =
     v.soc_start_pct != null && v.soc_end_pct != null
       ? ` ${v.soc_start_pct}→${v.soc_end_pct}%`
@@ -217,6 +227,7 @@ function WhyThisAction({ explanation }: { explanation: Explanation }) {
             <Metric label="Solar" value={kw(v.pv_kw)} />
             <Metric label="House load" value={kw(v.load_kw)} />
             <Metric label="Battery" value={bat.value} sub={bat.sub} />
+            <Metric label="Grid" value={grid.value} sub={grid.sub} />
             <Metric
               label="SoC"
               value={`${v.soc_start_kwh.toFixed(1)}→${v.soc_end_kwh.toFixed(1)} kWh`}
@@ -232,14 +243,9 @@ function WhyThisAction({ explanation }: { explanation: Explanation }) {
               />
             )}
           </dl>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[11px] text-muted-foreground">
-            <span>{gridText(v)}</span>
-            {l?.spike_reserve && <Chip>spike reserve {Math.round(l.spike_reserve.kwh)} kWh</Chip>}
-            {l?.daily_target && <Chip>daily charge target</Chip>}
-            {l?.live_spike && <Chip>spike live</Chip>}
-            {l?.prices_estimated && <Chip>price still an estimate</Chip>}
-            {stale && <Chip>reusing previous plan</Chip>}
-          </div>
+          {chips.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">{chips}</div>
+          )}
         </div>
       )}
     </div>
