@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.1
 
 - Dark mode neutrals now track Home Assistant's default dark theme
   (near-black `#111` canvas, `#1c1c1c` cards, `#202020` insets,
