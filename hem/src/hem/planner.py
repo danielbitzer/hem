@@ -87,35 +87,57 @@ def daily_soc_target_vector(
     *,
     target_soc: float,
     target_time: dt_time,
+    hold_hours: float,
     capacity_kwh: float,
     soc_max_kwh: float | None = None,
 ) -> np.ndarray | None:
-    """Soft instantaneous SoC targets (length T+1, aligned with soc[]): at
-    each local `target_time` inside the horizon, require target_soc×capacity.
+    """Soft daily SoC target as a windowed FLOOR (length T, aligned with
+    soc[1:] — the reserve convention): from each local `target_time` inside the
+    horizon and for the next `hold_hours`, require target_soc×capacity.
 
     The daily full-charge insurance: unforecast spikes and surprise load have
-    zero value in the objective, so the pure economics stop charging at
-    "enough for the forecast" — this prices being full going into each
-    evening. Instants strictly after `now` only (soc[0] is fixed; penalizing
-    it would just add a constant).
+    zero value in the objective, so pure economics stop charging at "enough for
+    the forecast" — this prices being full THROUGH the evening peak, not just at
+    a single instant it can dump the moment after. hold_hours=0 collapses to the
+    single step containing the target time. Steps only (soc[0] is fixed).
     """
     if target_soc <= 0:
         return None
-    times = [s.start for s in grid.steps] + [grid.steps[-1].end]
-    target = np.zeros(len(times))
-    day = times[0].astimezone(tz).date()
-    last_day = times[-1].astimezone(tz).date()
+    # soc[1:] is the SoC at each step's END; target[i] constrains soc[i+1].
+    ends = [s.end for s in grid.steps]
+    target = np.zeros(len(grid.steps))
+    kwh = target_soc * capacity_kwh
+    if soc_max_kwh is not None:
+        # clamp like the spike reserve: a target above soc_max would bake an
+        # unavoidable phantom penalty into every objective
+        kwh = min(kwh, soc_max_kwh)
+    day = ends[0].astimezone(tz).date()
+    last_day = ends[-1].astimezone(tz).date()
     while day <= last_day:
         # DST note: a nonexistent/ambiguous local time (spring-forward gap,
         # fall-back repeat — only 2-3am in AU) resolves via fold=0 to the
         # sane neighbor; no special handling needed.
-        instant = datetime.combine(day, target_time, tzinfo=tz)
-        if times[0] < instant <= times[-1]:
-            k = next(i for i, t in enumerate(times) if t >= instant)
-            # clamp like the spike reserve: a target above soc_max would bake
-            # an unavoidable phantom penalty into every objective
-            kwh = target_soc * capacity_kwh
-            target[k] = kwh if soc_max_kwh is None else min(kwh, soc_max_kwh)
+        win_start = datetime.combine(day, target_time, tzinfo=tz)
+        win_end = win_start + timedelta(hours=hold_hours)
+        # Skip a window that has already fully elapsed before the grid starts —
+        # otherwise the arrival fallback below would pin step 0 spuriously (its
+        # end is trivially >= a past win_start), holding the battery full right
+        # through the evening peak it was meant to discharge into.
+        if win_end < ends[0]:
+            day += timedelta(days=1)
+            continue
+        # Hold soc >= target across the window: every step whose END lands in
+        # [win_start, win_end], plus the arrival instant (the first step-end at
+        # or after win_start) so hold_hours=0 always pins one step.
+        arrival = next((i for i, e in enumerate(ends) if e >= win_start), None)
+        if arrival is None:
+            day += timedelta(days=1)
+            continue
+        for i in range(arrival, len(ends)):
+            if i == arrival or ends[i] <= win_end:
+                target[i] = max(target[i], kwh)
+            else:
+                break
         day += timedelta(days=1)
     return target if np.any(target > 0) else None
 
@@ -175,6 +197,7 @@ class Planner:
         self._grid_params = GridParams(
             import_limit_kw=settings.grid.import_limit_kw,
             export_limit_kw=settings.grid.export_limit_kw,
+            min_battery_export_price=settings.grid.min_battery_export_price,
         )
         self.previous_plan: Plan | None = None
 
@@ -269,6 +292,7 @@ class Planner:
                 self._tz,
                 target_soc=self._settings.battery.daily_target_soc,
                 target_time=self._settings.battery.daily_target_time,
+                hold_hours=self._settings.battery.daily_target_hold_hours,
                 capacity_kwh=self._battery_params.capacity_kwh,
                 soc_max_kwh=self._battery_params.soc_max_kwh,
             ),
@@ -349,8 +373,16 @@ class Planner:
 
     def optimize(self, data: CycleData, now: datetime) -> Plan:
         cfg = self._settings.optimizer
+        # Anchor the hold value on the REAL forecast window only — the padded
+        # tail repeats the last value and would drag min()/median() around.
+        real_buy = self._real_forecast_buy(data)
         terminal = (
-            auto_terminal_value(data.inputs.buy, self._battery_params)
+            auto_terminal_value(
+                real_buy,
+                self._battery_params,
+                floor=cfg.hold_value_floor,
+                scaling=cfg.hold_value_scaling,
+            )
             if cfg.terminal_soc_value == "auto"
             else float(cfg.terminal_soc_value)
         )
@@ -358,7 +390,8 @@ class Planner:
             terminal_value=terminal,
             reserve_penalty_per_kwh=self._settings.spike.reserve_penalty_per_kwh,
             solver_timeout_s=cfg.solver_timeout_s,
-            soc_target_penalty_per_kwh=self._settings.battery.daily_target_penalty_per_kwh,
+            soc_target_penalty_per_kwh=self._daily_target_penalty(real_buy),
+            min_battery_export_spread=cfg.min_battery_export_spread,
         )
         solution = solve(data.inputs, self._battery_params, self._grid_params, opt_config)
         solution = self._apply_hysteresis(solution, data, opt_config)
@@ -382,6 +415,26 @@ class Planner:
             tz=self._tz,
         )
         return plan
+
+    def _real_forecast_buy(self, data: CycleData) -> np.ndarray:
+        """The buy prices from the genuine forecast window, dropping the padded
+        tail (steps at/after price_forecast_end repeat the last value)."""
+        end = data.price_forecast_end
+        if end is None:
+            return data.inputs.buy
+        real = np.array([s.start < end for s in data.grid.steps])
+        return data.inputs.buy[real] if real.any() else data.inputs.buy
+
+    def _daily_target_penalty(self, real_buy: np.ndarray) -> float:
+        """The daily-target premium ($/kWh-hour of shortfall). Optionally lifted
+        to dominate the tariff — a multiple of the median forward import — so a
+        set target actually gets filled instead of losing to evening prices."""
+        b = self._settings.battery
+        penalty = b.daily_target_penalty_per_kwh
+        if b.daily_target_penalty_price_multiple > 0 and real_buy.size:
+            scaled = b.daily_target_penalty_price_multiple * float(np.median(real_buy))
+            penalty = max(penalty, scaled)
+        return penalty
 
     def _reserve_info(self, data: CycleData) -> dict | None:
         """The spike reserve as {kwh, until} for the explanation, or None when

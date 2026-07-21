@@ -35,6 +35,45 @@ def test_minimal_config_defaults():
     assert settings.entities.load_power == ""
 
 
+def test_redesign_defaults_and_overrides():
+    """The optimizer-redesign knobs: hold-value anchor, deadband, windowed
+    daily target, manual export floor."""
+    s = make_settings()
+    assert s.optimizer.hold_value_floor == 0.01
+    assert s.optimizer.hold_value_scaling == 1.0
+    assert s.optimizer.min_battery_export_spread == 0.0
+    assert s.battery.daily_target_hold_hours == 4.0
+    assert s.battery.daily_target_penalty_price_multiple == 0.0
+    assert s.grid.min_battery_export_price is None
+
+    s = make_settings(
+        optimizer={"hold_value_scaling": 1.2, "min_battery_export_spread": 0.02},
+        grid={"import_limit_kw": 15.0, "export_limit_kw": 5.0, "min_battery_export_price": 0.11},
+        battery={
+            "capacity_kwh": 44.8, "max_charge_kw": 12.0, "max_discharge_kw": 12.0,
+            "daily_target_hold_hours": 6.0, "daily_target_penalty_price_multiple": 3.0,
+        },
+    )
+    assert s.optimizer.min_battery_export_spread == 0.02
+    assert s.grid.min_battery_export_price == 0.11
+    assert s.battery.daily_target_hold_hours == 6.0
+    assert s.battery.daily_target_penalty_price_multiple == 3.0
+
+
+def test_negative_redesign_values_rejected():
+    for section, field in (
+        ("optimizer", "hold_value_floor"),
+        ("optimizer", "min_battery_export_spread"),
+        ("battery", "daily_target_hold_hours"),
+    ):
+        base = {
+            "battery": {"capacity_kwh": 12.8, "max_charge_kw": 5.0, "max_discharge_kw": 5.0},
+        }
+        base.setdefault(section, {})[field] = -0.5
+        with pytest.raises(ValueError):
+            make_settings(**base)
+
+
 def test_invalid_soc_bounds_rejected():
     config = json.loads(json.dumps(MINIMAL_CONFIG))
     config["battery"]["soc_min"] = 0.9

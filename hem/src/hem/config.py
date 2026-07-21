@@ -116,14 +116,22 @@ class Battery(BaseModel):
     # charge_negative is the default; HEM's internal convention is positive =
     # charging. Set charge_positive if your sensor reads the other way.
     power_convention: Literal["charge_positive", "charge_negative"] = "charge_negative"
-    # Daily full-charge insurance: softly require SoC >= daily_target_soc at
-    # daily_target_time (local) each day. The penalty is the premium you'll
-    # pay per missing kWh — high enough to beat forgone feed-in on a normal
-    # day, low enough that a genuinely better opportunity (a real spike)
-    # still outbids it. 0 disables.
+    # Daily full-charge insurance: softly require SoC >= daily_target_soc from
+    # daily_target_time (local) each day, HELD for daily_target_hold_hours (the
+    # window through the evening peak — a floor, not a single instant). 0
+    # disables. The penalty is the premium per kWh-hour of shortfall — high
+    # enough to beat forgone feed-in on a normal day, low enough that a
+    # genuinely better opportunity (a real spike) still outbids it. Optionally
+    # scale it with the tariff via daily_target_penalty_price_multiple so it
+    # dominates the prevailing import price (à la EMHASS).
     daily_target_soc: float = Field(default=0.0, ge=0, le=1)
     daily_target_time: dt_time = dt_time(15, 0)
+    daily_target_hold_hours: float = Field(default=4.0, ge=0)
     daily_target_penalty_per_kwh: float = Field(default=0.10, ge=0)
+    # 0 = use the fixed penalty above. >0 = also enforce a penalty of at least
+    # (multiple × median forward import price), so the target dominates the
+    # tariff and actually gets filled. EMHASS uses ~100×; a few × is plenty.
+    daily_target_penalty_price_multiple: float = Field(default=0.0, ge=0)
 
     @model_validator(mode="after")
     def _soc_bounds_ordered(self) -> Self:
@@ -137,6 +145,11 @@ class Battery(BaseModel):
 class Grid(BaseModel):
     import_limit_kw: float = Field(gt=0)
     export_limit_kw: float = Field(ge=0)
+    # Lowest feed-in price ($/kWh) at which HEM will discharge the battery to
+    # the grid. Below it the battery still covers the house but won't export;
+    # PV surplus can still export. None (blank) = no manual floor (the
+    # automatic optimizer.min_battery_export_spread deadband may still apply).
+    min_battery_export_price: float | None = Field(default=None)
 
 
 class Vacation(BaseModel):
@@ -176,7 +189,18 @@ class Load(BaseModel):
 
 class Optimizer(BaseModel):
     horizon_hours: int = Field(default=36, ge=2, le=72)
+    # The hold value (what a stored kWh is worth at the horizon's end). "auto"
+    # anchors it to rebuy cost: the cheapest forward import grossed up for
+    # charge losses, scaled by hold_value_scaling, floored at hold_value_floor.
+    # A fixed number overrides the anchor entirely.
     terminal_soc_value: Literal["auto"] | float = "auto"
+    hold_value_floor: float = Field(default=0.01, ge=0)
+    hold_value_scaling: float = Field(default=1.0, ge=0)
+    # Minimum arbitrage spread ($/kWh): the battery only sells to the grid when
+    # the feed-in beats holding by this margin. Kills pennies-margin export
+    # churn. 0 = off (export whenever marginally profitable). The automatic
+    # counterpart to grid.min_battery_export_price.
+    min_battery_export_spread: float = Field(default=0.0, ge=0)
     # must stay below the 90s cycle timeout in main.py
     solver_timeout_s: int = Field(default=30, ge=1, le=60)
     action_switch_threshold_dollars: float = Field(default=0.02, ge=0)

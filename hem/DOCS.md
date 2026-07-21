@@ -51,29 +51,37 @@ both live prices and forecasts.
 ### `battery`
 
 Physical parameters of your battery. `wear_cost_per_kwh` is the degradation cost charged
-against every discharged kWh in the objective — a reasonable starting point is battery
-replacement cost divided by total lifetime throughput (e.g. $6000 / 38 MWh ≈ $0.16, or
-much lower if you expect the battery to outlive its warranty).
+against every discharged kWh in the objective. It is a *throughput* cost only — it never
+lowers the value of stored energy (see the hold value under `optimizer`), so raising it
+makes the battery cycle **less**, as you'd expect. A reasonable value is replacement cost
+÷ lifetime throughput; realistic lithium is **~0.5–3c/kWh** (e.g. $6000 / 38 MWh ≈ 1.6c,
+and a Sungrow warranty implies a ~0.4c floor). Much above ~4c is usually too high and
+will suppress genuine arbitrage.
 
 **Daily full-charge insurance** (`daily_target_soc`, default 0 = off): a
 rational optimizer only charges enough for the *forecast* — unforecast spikes
 and surprise usage are worth nothing to it, so on a mild day it may stop at
-50%. Setting `daily_target_soc` (e.g. `1.0`) softly requires that SoC at
-`daily_target_time` local time (default 15:00, before the evening
-ramp) each day. Soft means: the plan pays up to
-`daily_target_penalty_per_kwh` (default $0.10) per missing kWh — your
-explicit insurance premium. Filling via forgone feed-in or a cheap grid
-window (usually well under 10c/kWh of cost) happens; sacrificing a genuinely
-better opportunity, like exporting into a real spike, does not. The target
-binds at an instant, not as a floor, so the battery discharges freely into
-the evening peak right after it.
+50%. Setting `daily_target_soc` (e.g. `1.0`) softly requires that SoC from
+`daily_target_time` local time (default 15:00, before the evening ramp) and
+**held for `daily_target_hold_hours`** (default 4h) — a floor across the
+evening peak, not a single instant it can dump the moment after. Freed to
+discharge once the window ends. Soft means: the plan pays up to
+`daily_target_penalty_per_kwh` (default $0.10) per kWh-*hour* of shortfall —
+your insurance premium. Filling via forgone feed-in or a cheap grid window
+happens; sacrificing a genuinely better opportunity, like exporting into a
+real spike, does not.
 
 **Calibrate the penalty against your tariffs**: it is a maximum
 willingness-to-pay, so anything cheaper than it WILL be bought. Set it
 between your typical feed-in price and your typical grid buy price — e.g.
-$0.10 with ~$0.08 feed-in and ~$0.25 grid. Set it above your grid price and
-the planner will happily import at full price to hit the target (verified
-live: $0.20 triggered immediate grid charging at afternoon prices).
+$0.10 with ~$0.08 feed-in and ~$0.25 grid. If the battery still won't reach
+the target on dear evenings, either raise it or set
+`daily_target_penalty_price_multiple` (0 = off) to enforce a penalty of at
+least that multiple of the median forward import price, so the target
+dominates the tariff (a few × is plenty; EMHASS uses ~100×). Note that a
+single-instant fill cannot survive a *negative* feed-in tomorrow (refilling
+is then free, so the battery may dump tonight and still hit the target) — that
+is what the export floor / deadband below is for.
 
 `soc_min` is **HEM's planning reserve, not the inverter's minimum SoC** — set
 it above the inverter's own floor as insurance against forecast error. HEM's
@@ -97,6 +105,13 @@ Limits of your **grid connection**, distinct from the battery's power limits:
   the battery discharges: export = battery discharge + PV − house load. If
   you raise `spike.discharge_kw`, raise this to match (if permitted) or the
   extra battery power has nowhere to go.
+- `min_battery_export_price` (optional, blank by default) — a **hard** floor: the
+  lowest feed-in price ($/kWh) at which HEM will discharge the *battery* to the
+  grid. Below it the battery still runs the house but won't sell stored energy;
+  surplus PV can still export, and charging is untouched. Use it if you'd
+  rather keep charge than sell it cheap. The automatic
+  `optimizer.min_battery_export_spread` deadband does the same thing relative to the
+  hold value; this is the fixed-dollar manual override.
 
 `battery.max_charge_kw` / `max_discharge_kw` limit the *battery* (cell wear,
 inverter DC side); the grid limits cap the *net AC flow at the meter*. The
@@ -162,11 +177,28 @@ buffer until learning is active. The goal state is always a learned forecast.
 - `horizon_hours` (36) — how far ahead each plan looks. Longer sees more of
   tomorrow's solar; beyond the price forecast the tail is padded (shaded on
   the dashboard).
-- `terminal_soc_value` — how leftover stored energy is valued at the horizon
-  end, in **$/kWh** (it is NOT a target SoC). `auto` = median buy price ×
-  discharge efficiency − wear cost, i.e. "what buying that energy later would
-  plausibly cost". Without it the optimizer would dump the battery at any
-  positive price before the horizon.
+- `terminal_soc_value` — the **hold value**: what leftover stored energy is
+  worth at the horizon end, in **$/kWh** (it is NOT a target SoC). `auto`
+  anchors it to **rebuy cost** — the cheapest forward import price grossed up
+  for charge losses (`min(buy) / efficiency_charge`), i.e. what it would cost to
+  put that energy back — then applies `hold_value_scaling` and the
+  `hold_value_floor`. On a flat/low-spread horizon it is capped at the
+  self-consumption break-even so the battery still runs the house from stored
+  solar rather than hoarding. Crucially it does **not** subtract wear, so wear
+  no longer inverts the export decision. Without a hold value the optimizer
+  would dump the battery at any positive price before the horizon. Enter `auto`
+  or a fixed number.
+- `hold_value_floor` (0.01) — lower bound on the auto hold value, so a cheap day
+  never values stored energy at ~$0 (which was what made the battery export at
+  low feed-in prices). Predbat uses ~1c.
+- `hold_value_scaling` (1.0) — multiplier on the auto hold value. `>1` makes the
+  battery holdier (keeps charge longer), `<1` trades more freely.
+- `min_battery_export_spread` (0.0 = off) — automatic export **deadband**: the battery
+  only sells to the grid when the feed-in beats the value of holding
+  (`hold_value / efficiency_discharge + wear`) by at least this margin, so it
+  won't churn export for pennies on the 5-minute reprices. The automatic
+  counterpart to `grid.min_battery_export_price`. A cent or two is a sensible starting
+  point if you see marginal exports you'd rather not make.
 - `solver_timeout_s` (30, max 60) — HiGHS time limit per solve; normal solves
   take tens of milliseconds.
 - `action_switch_threshold_dollars` (0.02) — hysteresis: the current action

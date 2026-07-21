@@ -36,11 +36,11 @@ const METER_HELP =
 
 const HOLD_VALUE_HELP =
   "What HEM reckons a kWh still in the battery at the end of its 36-hour " +
-  "horizon is worth to you — roughly the typical import price, less " +
-  "round-trip losses and battery wear. It stops the plan from draining the " +
-  "battery just because the horizon ends, and it's the break-even the " +
-  "current feed-in price is weighed against before selling: sell above it, " +
-  "hold below it.";
+  "horizon is worth to you — roughly what it would cost to buy that energy " +
+  "back later (the cheapest upcoming import price, plus charging losses). It " +
+  "stops the plan from draining the battery just because the horizon ends, " +
+  "and it's the break-even the current feed-in price is weighed against " +
+  "before selling: sell above it, hold below it.";
 
 const ACTION_LABEL: Record<string, string> = {
   charge: "charging",

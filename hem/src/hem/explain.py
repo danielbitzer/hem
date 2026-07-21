@@ -119,7 +119,7 @@ def _reason(
         )
     else:
         lead = (
-            "Self-consumption — nothing beats holding at right now"
+            "Self-consumption — nothing beats holding right now"
         )
     tail = (
         f"; {', '.join(holds)}"

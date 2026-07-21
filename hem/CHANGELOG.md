@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+- **Optimizer economics redesign** — fixes the battery selling stored energy
+  cheap and not reliably filling to a daily target:
+  - **Hold value re-anchored to rebuy cost.** The value of stored energy at the
+    horizon end is now the cheapest forward import grossed up for charge losses
+    (`min(buy) / efficiency_charge`), scaled by `optimizer.hold_value_scaling`
+    and floored above zero by `optimizer.hold_value_floor` (default 1c). The old
+    `median × efficiency − wear` formula collapsed to ~$0 on cheap days (so the
+    battery would export at any feed-in above the wear cost) and, worse,
+    *inverted* the export decision — a higher wear lowered the hold value and
+    invited more selling. Wear is no longer subtracted from the hold value, so
+    raising it now makes the battery cycle **less**. On a flat/low-spread
+    horizon the hold value is capped at the self-consumption break-even so the
+    battery still runs the house from stored solar instead of hoarding.
+  - **Wear is a throughput cost only** — documented realistic values (~0.5–3c/kWh)
+    and that much above ~4c suppresses genuine arbitrage.
+  - **Daily target is now a windowed floor.** `battery.daily_target_hold_hours`
+    (default 4h) holds the target SoC as a floor from `daily_target_time` through
+    the evening peak, instead of a single instant it could dump the moment after.
+    The penalty is now per kWh-*hour* of shortfall and can be scaled to dominate
+    the tariff via `battery.daily_target_penalty_price_multiple`.
+  - **Export floor / deadband.** `grid.min_battery_export_price` sets a hard manual floor
+    below which the battery never sells stored energy (PV export and charging
+    untouched); `optimizer.min_battery_export_spread` is the automatic counterpart — the
+    battery only sells when the feed-in beats the value of holding by a margin,
+    killing pennies-margin churn on the 5-minute reprices.
+  - The auto hold value is now computed on the real forecast window, not the
+    padded tail.
+
 ## 0.6.0
 
 - **"Why this action?" on the dashboard**: an expandable panel under the
