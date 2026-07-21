@@ -198,13 +198,17 @@ def solve(
     if not battery.allow_grid_charge:
         constraints.append(pc <= pv_u)
     # Min-export-price guard: at steps whose feed-in price is below the floor,
-    # cap grid export at the PV surplus (pv_u - pc), so the battery can still
-    # cover load and import but never sources export — no selling stored energy
-    # below the floor. Uses the raw forecast sell (not the buy-clamped copy).
+    # cap the battery's DISCHARGE at the house load, so stored energy covers the
+    # house but never routes to the grid — no selling stored energy below the
+    # floor. Grid import/charging and PV export are untouched. Uses the raw
+    # forecast sell (not the buy-clamped copy).
+    # NB do NOT bound `ge <= pv_u - pc` instead: with ge >= 0 that forces
+    # pc <= pv_u, which forbids grid charging overnight (pv_u = 0) at exactly the
+    # cheap, low-feed-in windows you want to charge in.
     if grid.min_export_price is not None:
         below = np.where(inputs.sell < grid.min_export_price)[0]
         if below.size:
-            constraints.append(ge[below] <= pv_u[below] - pc[below])
+            constraints.append(pd[below] <= inputs.load[below])
     # The self-consumption envelope: charge from PV only, export only PV
     # leftovers (no battery export); serving load from the battery is free.
     self_consumption = [pc[0] <= pv_u[0], ge[0] <= pv_u[0] - pc[0]]

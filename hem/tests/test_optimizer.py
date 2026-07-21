@@ -378,9 +378,9 @@ def test_min_export_price_blocks_battery_export():
 
 
 def test_min_export_price_still_allows_pv_export():
-    """The floor blocks the battery from *sourcing* export (grid export capped
-    at PV), but surplus PV can still feed the grid below the floor — the
-    alternative is pointless curtailment."""
+    """The floor blocks the battery from *sourcing* export (its discharge is
+    capped at load), but surplus PV can still feed the grid below the floor —
+    the alternative is pointless curtailment."""
     pv = 2.0
     inputs = make_inputs(T=6, buy=0.50, sell=0.30, pv=pv, load=0.5, soc0=10.0)
     cfg = config(terminal_value=0.05)
@@ -390,3 +390,14 @@ def test_min_export_price_still_allows_pv_export():
     sol = solve(inputs, BATTERY, floored, cfg)
     assert sol.grid_export_kw[0] > 0.1                     # PV still exports below the floor
     assert sol.grid_export_kw.max() <= pv + 1e-6          # but the battery never boosts it past PV
+
+
+def test_min_export_price_does_not_block_grid_charging():
+    """The floor must only stop battery EXPORT, not grid CHARGING: overnight
+    (no PV) at a cheap, below-floor feed-in it must still charge from the grid.
+    (Regression: capping ge <= pv_u - pc forced pc = 0 whenever pv_u = 0.)"""
+    inputs = make_inputs(T=12, buy=0.08, sell=0.05, pv=0.0, load=0.3, soc0=2.0)
+    floored = GridParams(import_limit_kw=15.0, export_limit_kw=10.0, min_export_price=0.15)
+    sol = solve(inputs, BATTERY, floored, config(terminal_value=0.20))
+    assert sol.charge_kw.max() > 1.0                      # charges from the grid despite the floor
+    assert sol.grid_export_kw.max() < 1e-6                # and still no battery export
