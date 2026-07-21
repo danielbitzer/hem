@@ -33,6 +33,14 @@ def test_minimal_config_defaults():
     assert settings.enabled is False
     # no load sensor is a valid (degraded) config — HEM plans with zero load
     assert settings.entities.load_power == ""
+    # min export price is opt-in: no floor by default
+    assert settings.grid.min_export_price is None
+
+
+def test_min_export_price_parses():
+    config = json.loads(json.dumps(MINIMAL_CONFIG))
+    config["grid"]["min_export_price"] = 0.13
+    assert Settings.model_validate(config).grid.min_export_price == 0.13
 
 
 def test_invalid_soc_bounds_rejected():

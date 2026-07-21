@@ -58,6 +58,10 @@ class BatteryParams:
 class GridParams:
     import_limit_kw: float
     export_limit_kw: float
+    # Below this feed-in price ($/kWh), forbid BATTERY-sourced grid export —
+    # the battery still covers the house, but never sells stored energy this
+    # cheap. PV surplus can still export. None = no floor.
+    min_export_price: float | None = None
 
 
 @dataclass(frozen=True)
@@ -114,7 +118,16 @@ class SolverError(Exception):
 
 def auto_terminal_value(buy: np.ndarray, battery: BatteryParams) -> float:
     """Value residual stored energy at 'what buying later would plausibly cost':
-    median buy price discounted by discharge efficiency, net of wear."""
+    median buy price discounted by discharge efficiency, net of wear. This is
+    the correct NET value of a held kWh (you recover it later at ~median buy
+    through the discharge efficiency, paying wear to do so), and keeping the
+    wear term is what preserves self-consumption on flat/mild days — dropping
+    it makes the battery hoard and import instead of running the house.
+
+    NB a side effect (see grid.min_export_price): when the median buy is low and
+    wear is high this floors near $0, so the battery will export 'excess' stored
+    energy at any feed-in above ~wear. That's economically marginal but often
+    unwanted — min_export_price is the hard floor to forbid it."""
     return max(
         0.0,
         float(np.median(buy)) * battery.efficiency_discharge - battery.wear_cost_per_kwh,
@@ -184,6 +197,14 @@ def solve(
     ]
     if not battery.allow_grid_charge:
         constraints.append(pc <= pv_u)
+    # Min-export-price guard: at steps whose feed-in price is below the floor,
+    # cap grid export at the PV surplus (pv_u - pc), so the battery can still
+    # cover load and import but never sources export — no selling stored energy
+    # below the floor. Uses the raw forecast sell (not the buy-clamped copy).
+    if grid.min_export_price is not None:
+        below = np.where(inputs.sell < grid.min_export_price)[0]
+        if below.size:
+            constraints.append(ge[below] <= pv_u[below] - pc[below])
     # The self-consumption envelope: charge from PV only, export only PV
     # leftovers (no battery export); serving load from the battery is free.
     self_consumption = [pc[0] <= pv_u[0], ge[0] <= pv_u[0] - pc[0]]

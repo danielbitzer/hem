@@ -244,6 +244,14 @@ export const SECTIONS: SectionSpec[] = [
           "has nowhere to go.",
         { unit: "kW", min: 0, step: 0.5, required: true },
       ),
+      number(
+        "grid.min_export_price",
+        "Min export price",
+        "Lowest feed-in price at which HEM will discharge the battery to the grid. " +
+          "Below it the battery still covers the house but won't sell stored energy; " +
+          "PV surplus can still export. Blank = export whenever profitable.",
+        { unit: "$/kWh", step: 0.01 },
+      ),
     ],
   },
   {

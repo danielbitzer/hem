@@ -137,6 +137,10 @@ class Battery(BaseModel):
 class Grid(BaseModel):
     import_limit_kw: float = Field(gt=0)
     export_limit_kw: float = Field(ge=0)
+    # Lowest feed-in price ($/kWh) at which HEM will discharge the battery to
+    # the grid. Below it the battery still covers the house but won't export;
+    # PV surplus can still export. None (blank) = export whenever profitable.
+    min_export_price: float | None = Field(default=None)
 
 
 class Vacation(BaseModel):

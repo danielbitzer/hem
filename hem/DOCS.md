@@ -97,6 +97,14 @@ Limits of your **grid connection**, distinct from the battery's power limits:
   the battery discharges: export = battery discharge + PV − house load. If
   you raise `spike.discharge_kw`, raise this to match (if permitted) or the
   extra battery power has nowhere to go.
+- `min_export_price` (optional, blank by default) — the lowest feed-in price
+  ($/kWh) at which HEM will discharge the **battery** to the grid. Below it
+  the battery still runs the house, but won't sell stored energy; surplus PV
+  can still export. Use this if you'd rather keep charge than sell it cheap:
+  HEM's economics can value stored energy near \$0 when your average import
+  price is low and wear cost is high (so it sells "excess" at any feed-in
+  above roughly the wear cost), and this is the hard floor that overrides
+  that. It does not affect PV export or charging.
 
 `battery.max_charge_kw` / `max_discharge_kw` limit the *battery* (cell wear,
 inverter DC side); the grid limits cap the *net AC flow at the meter*. The

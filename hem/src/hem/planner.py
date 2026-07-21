@@ -175,6 +175,7 @@ class Planner:
         self._grid_params = GridParams(
             import_limit_kw=settings.grid.import_limit_kw,
             export_limit_kw=settings.grid.export_limit_kw,
+            min_export_price=settings.grid.min_export_price,
         )
         self.previous_plan: Plan | None = None
 

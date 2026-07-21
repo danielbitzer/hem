@@ -363,3 +363,30 @@ def test_daily_target_is_an_instant_not_a_floor():
     # ...then discharges flat-out into the sell window: no lingering floor
     assert np.allclose(sol.discharge_kw[9:], BATTERY.max_discharge_kw, atol=0.01)
     assert sol.soc_kwh[-1] < BATTERY.soc_max_kwh - 7.0  # well below the target
+
+
+def test_min_export_price_blocks_battery_export():
+    """Below the floor the battery covers the house but never sources grid
+    export, even when selling would otherwise be marginally profitable."""
+    inputs = make_inputs(T=6, buy=0.50, sell=0.30, pv=0.0, load=0.5, soc0=10.0)
+    cfg = config(terminal_value=0.05)  # low hold value -> wants to dump excess
+    assert solve(inputs, BATTERY, GRID, cfg).grid_export_kw.max() > 0.1  # no floor: exports
+    floored = GridParams(import_limit_kw=15.0, export_limit_kw=5.0, min_export_price=0.35)
+    guarded = solve(inputs, BATTERY, floored, cfg)
+    assert guarded.grid_export_kw.max() < 1e-6              # floor forbids battery export
+    assert guarded.discharge_kw[0] == pytest.approx(0.5, abs=0.05)  # still covers the load
+
+
+def test_min_export_price_still_allows_pv_export():
+    """The floor blocks the battery from *sourcing* export (grid export capped
+    at PV), but surplus PV can still feed the grid below the floor — the
+    alternative is pointless curtailment."""
+    pv = 2.0
+    inputs = make_inputs(T=6, buy=0.50, sell=0.30, pv=pv, load=0.5, soc0=10.0)
+    cfg = config(terminal_value=0.05)
+    free = solve(inputs, BATTERY, GRID, cfg)
+    assert free.grid_export_kw.max() > pv + 0.5            # no floor: battery boosts export past PV
+    floored = GridParams(import_limit_kw=15.0, export_limit_kw=5.0, min_export_price=0.35)
+    sol = solve(inputs, BATTERY, floored, cfg)
+    assert sol.grid_export_kw[0] > 0.1                     # PV still exports below the floor
+    assert sol.grid_export_kw.max() <= pv + 1e-6          # but the battery never boosts it past PV

@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.6.0
+## Unreleased
+
+- **`grid.min_export_price`** (Settings → Grid connection, blank by default):
+  the lowest feed-in price at which HEM will discharge the battery to the
+  grid. Below it the battery still covers the house but won't sell stored
+  energy; PV surplus can still export. This is a hard floor for people who'd
+  rather keep charge than sell it cheap — HEM's economics can value stored
+  energy near \$0 when your average import price is low and wear cost is high,
+  and will otherwise export "excess" at any feed-in above roughly the wear
+  cost (which is also why *raising* the wear cost can, counter-intuitively,
+  make it export more — a higher wear cost lowers the modelled hold value).
 
 - **"Why this action?" on the dashboard**: an expandable panel under the
   Action-now hero explains the current interval in plain language and lays
