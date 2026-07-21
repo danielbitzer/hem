@@ -1,16 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { type ConfigResponse, fetchConfig, fetchPlanOrExplain, type PlanResponse } from "./api";
-import { BatteryChart, ForecastChart, PricesChart, type Row, SocChart } from "./charts";
 import { installIosScrollKick } from "./iosScrollKick";
-import { ModeStrip } from "./ModeStrip";
+import { PlanView } from "./PlanView";
 import { SettingsView } from "./settings/SettingsView";
-import { Hero, Stats } from "./Tiles";
+import { TestView } from "./TestView";
 import { fmtTime } from "./theme";
 
 const REFRESH_MS = 60_000;
 
-type View = "dashboard" | "settings";
+type View = "dashboard" | "settings" | "test";
+const VIEWS: { id: View; label: string }[] = [
+  { id: "dashboard", label: "Dashboard" },
+  { id: "settings", label: "Settings" },
+  { id: "test", label: "Test" },
+];
 
 export function App() {
   const [chosenView, setChosenView] = useState<View | null>(null);
@@ -62,31 +66,29 @@ export function App() {
               The track is a dark inset (bg-tab-bg) and the active tab a raised
               surface so the two read as distinct from the header bar. */}
           <nav className="flex shrink-0 gap-[3px] rounded-full bg-tab-bg p-[3px] max-sm:w-full">
-            {(["dashboard", "settings"] as const).map((v) => (
+            {VIEWS.map((v) => (
               <button
-                key={v}
+                key={v.id}
                 type="button"
-                aria-current={view === v ? "page" : undefined}
-                onClick={() => setChosenView(v)}
+                aria-current={view === v.id ? "page" : undefined}
+                onClick={() => setChosenView(v.id)}
                 className={
                   "cursor-pointer rounded-full border-none px-4 py-[7px] text-[13px] font-semibold transition-all max-sm:flex-1 max-sm:py-2 " +
-                  (view === v
+                  (view === v.id
                     ? "bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.12)] dark:bg-[#2c2c2c] dark:shadow-none"
                     : "bg-transparent text-muted-foreground hover:text-foreground")
                 }
               >
-                {v === "dashboard" ? "Dashboard" : "Settings"}
+                {v.label}
               </button>
             ))}
           </nav>
         </div>
       </header>
       <main className="mx-auto flex max-w-[960px] flex-col gap-3.5 p-5">
-        {view === "settings" ? (
-          <SettingsView />
-        ) : (
-          <Dashboard config={config.data} plan={plan.data} />
-        )}
+        {view === "settings" && <SettingsView />}
+        {view === "test" && <TestView />}
+        {view === "dashboard" && <Dashboard config={config.data} plan={plan.data} />}
       </main>
     </div>
   );
@@ -152,29 +154,6 @@ function Dashboard({
   plan: PlanResponse | undefined;
 }) {
   const banner = lifecycleBanner(config);
-
-  // Parse interval timestamps exactly once; every child works from Row.
-  // (No useMemo: the React Compiler memoizes these derivations; TanStack
-  // Query's structural sharing keeps identity stable on quiet polls.)
-  const rows: Row[] = (plan?.intervals ?? []).map((iv) => ({
-    t: Date.parse(iv.start),
-    end: Date.parse(iv.end),
-    action: iv.action,
-    buy: iv.buy,
-    sell: iv.sell,
-    pv: iv.pv_kw,
-    load: iv.load_kw,
-    battery: iv.power_kw,
-    gridImport: iv.grid_import_kw,
-    gridExport: -iv.grid_export_kw,
-    soc: iv.soc_end,
-  }));
-
-  // Step charts need a closing point at the final interval's END, or every
-  // line stops one interval short of the axis edge (and of the mode strip).
-  const lastRow = rows[rows.length - 1];
-  const chartRows: Row[] = lastRow ? [...rows, { ...lastRow, t: lastRow.end }] : rows;
-
   if (!plan) {
     return (
       <div>
@@ -183,29 +162,12 @@ function Dashboard({
       </div>
     );
   }
-
-  const first = rows[0];
-  const last = rows[rows.length - 1];
-  if (!first || !last) {
-    return <div className="p-6 text-center">plan is empty — waiting for the next cycle</div>;
-  }
-  const domain: [number, number] = [first.t, last.end];
-  const fcEnd = plan.meta.price_forecast_end ? Date.parse(plan.meta.price_forecast_end) : null;
-  const warning = warningText(plan);
-  const vacation = vacationBanner(plan);
-
   return (
     <>
       {banner && <Banner text={banner} />}
-      {vacation && <Banner text={vacation} />}
-      {warning && <Banner text={warning} />}
-      <Hero rows={rows} explanation={plan.meta.explanation} />
-      <Stats plan={plan} rows={rows} />
-      <PricesChart rows={chartRows} domain={domain} forecastEnd={fcEnd} />
-      <ForecastChart rows={chartRows} domain={domain} info={loadForecastLine(plan)} />
-      <ModeStrip rows={rows} domain={domain} />
-      <BatteryChart rows={chartRows} domain={domain} />
-      <SocChart rows={chartRows} domain={domain} capacity={plan.meta.capacity_kwh ?? null} />
+      {vacationBanner(plan) && <Banner text={vacationBanner(plan) as string} />}
+      {warningText(plan) && <Banner text={warningText(plan) as string} />}
+      <PlanView plan={plan} info={loadForecastLine(plan)} />
     </>
   );
 }

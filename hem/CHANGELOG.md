@@ -29,6 +29,15 @@
     killing pennies-margin churn on the 5-minute reprices.
   - The auto hold value is now computed on the real forecast window, not the
     padded tail.
+- **Test mode** (a new "Test" tab): run the optimiser against hand-picked
+  synthetic Amber price scenarios — "price spike tonight", "negative feed-in
+  tomorrow", "low morning rising afternoon", and more — to see how HEM would
+  respond without waiting for real prices to change. Pick a scenario and a
+  starting battery level, optionally override key settings (wear cost, hold
+  value scaling, export deadband, min export price, daily SoC target/penalty)
+  to preview a change without saving it, and the resulting plan renders exactly
+  like the live dashboard. Read-only — it never touches your live plan or the
+  inverter.
 
 ## 0.6.0
 

@@ -134,6 +134,57 @@ export async function fetchPlan(): Promise<PlanResponse> {
   return parsed.data;
 }
 
+// --- Test mode: run the optimizer against synthetic price scenarios ---
+
+export const ScenarioSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string(),
+});
+export type Scenario = z.infer<typeof ScenarioSchema>;
+
+export interface SimOverrides {
+  wear_cost_per_kwh?: number | null;
+  hold_value_scaling?: number | null;
+  min_battery_export_spread?: number | null;
+  min_battery_export_price?: number | null;
+  daily_target_soc?: number | null;
+  daily_target_hold_hours?: number | null;
+  daily_target_penalty_per_kwh?: number | null;
+}
+
+export async function fetchScenarios(): Promise<Scenario[]> {
+  const resp = await fetch("./api/scenarios", { cache: "no-store" });
+  if (!resp.ok) throw new Error(`scenarios failed: ${resp.statusText}`);
+  return z.object({ scenarios: z.array(ScenarioSchema) }).parse(await resp.json()).scenarios;
+}
+
+export async function runSimulation(req: {
+  scenario: string;
+  soc_frac: number;
+  overrides?: SimOverrides;
+}): Promise<PlanResponse> {
+  const resp = await fetch("./api/simulate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    let detail = resp.statusText;
+    try {
+      detail = ((await resp.json()) as { error?: string }).error ?? detail;
+    } catch {
+      // non-JSON error body
+    }
+    throw new Error(detail);
+  }
+  const parsed = PlanResponseSchema.safeParse(await resp.json());
+  if (!parsed.success) {
+    throw new Error(`simulation payload failed validation: ${z.prettifyError(parsed.error)}`);
+  }
+  return parsed.data;
+}
+
 export async function fetchHealthError(): Promise<string> {
   try {
     const resp = await fetch("./health", { cache: "no-store" });
