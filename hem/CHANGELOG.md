@@ -12,6 +12,8 @@
   cost (which is also why *raising* the wear cost can, counter-intuitively,
   make it export more — a higher wear cost lowers the modelled hold value).
 
+## 0.6.0
+
 - **"Why this action?" on the dashboard**: an expandable panel under the
   Action-now hero explains the current interval in plain language and lays
   out the numbers behind it — buy/feed-in prices, solar, house load,
