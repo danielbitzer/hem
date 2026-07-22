@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
 
 - **Optimizer economics redesign** — fixes the battery selling stored energy
   cheap and not reliably filling to a daily target:
