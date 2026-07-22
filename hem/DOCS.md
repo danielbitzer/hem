@@ -48,6 +48,11 @@ Point each option at your entity IDs. Amber Express's forecast attributes live o
 the price sensors themselves, so the two price entities are all HEM needs for
 both live prices and forecasts.
 
+`pv_power` (optional) is your **actual** PV generation power sensor (W or kW,
+e.g. the mkaiser package's `total_dc_power`) — distinct from the
+`pv_forecast_*` forecast sensors. It feeds Test mode's time travel, which
+replays real recorded solar; without it, historical replays assume zero PV.
+
 ### `battery`
 
 Physical parameters of your battery. `wear_cost_per_kwh` is the degradation cost charged
@@ -262,6 +267,25 @@ The add-on serves an ingress panel (sidebar → Energy Manager): current
 action/setpoint/SoC/cost tiles plus charts of prices, PV/load forecast, planned
 battery power with grid flows, and the SoC trajectory. Auto-refreshes every
 minute; fully offline (no CDN).
+
+### Test mode
+
+The **Test** tab runs the optimizer without touching your live plan or the
+inverter, in two ways:
+
+- **Scenarios** — hand-made price shapes ("price spike tonight", "negative
+  feed-in tomorrow", …) with a starting-SoC slider.
+- **Time travel** — pick a past moment and HEM replays the prices, solar and
+  load Home Assistant actually recorded from then (starting from the battery
+  level recorded at that time, or one you set). Honesty caveat: the replay
+  feeds the optimizer *recorded actuals* — perfect hindsight — not the
+  forecast HEM saw at the time, so it shows how your settings value the real
+  day, not a re-run of the historical decision. Reach is limited by HA's
+  recorder retention (~10 days by default), and real solar needs the optional
+  `entities.pv_power` sensor.
+
+Both accept live config overrides (wear cost, hold value scaling, export
+floor/deadband, daily target) so you can preview a change before saving it.
 
 ## Controlling your inverter (the actuator automation)
 
