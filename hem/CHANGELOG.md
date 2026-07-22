@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
 - **Time travel in Test mode**: pick a past moment and HEM replays the prices,
   solar and house load Home Assistant actually recorded from then through the
