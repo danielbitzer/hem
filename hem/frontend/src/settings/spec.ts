@@ -188,10 +188,12 @@ export const SECTIONS: SectionSpec[] = [
       number(
         "battery.wear_cost_per_kwh",
         "Wear cost",
-        "Degradation cost charged against every discharged kWh — replacement cost ÷ " +
-          "lifetime throughput. Realistic lithium is ~0.5–3c (a Sungrow warranty implies " +
-          "~0.4c); much above ~4c suppresses genuine arbitrage. Throughput only — it " +
-          "never devalues stored energy, so raising it cycles the battery LESS.",
+        "Degradation cost charged against EVERY discharged kWh — including serving " +
+          "your own house: set it too high and the battery sits idle while you import " +
+          "at prices it should be beating. Keep it the honest physical number " +
+          "(replacement cost ÷ lifetime throughput; realistic lithium ~0.5–3c, a " +
+          "Sungrow warranty implies ~0.4c) and use the min battery export spread for " +
+          "\"only sell when it's worth it\" selectivity instead.",
         { unit: "$/kWh", min: 0, step: 0.01, default: "0.04" },
       ),
       {

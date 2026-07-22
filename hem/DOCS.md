@@ -67,6 +67,14 @@ makes the battery cycle **less**, as you'd expect. A reasonable value is replace
 and a Sungrow warranty implies a ~0.4c floor). Much above ~4c is usually too high and
 will suppress genuine arbitrage.
 
+Note that "every discharged kWh" **includes serving your own house**: the battery only
+covers the load when the buy price beats roughly `wear + hold value/efficiency`, so an
+inflated wear cost makes it sit idle holding stored solar while you import at prices it
+should be beating. If what you actually want is "don't *sell* for thin margins", keep the
+wear cost honest and express that preference with `optimizer.min_battery_export_spread` —
+it gates only battery→grid export (the spread is your minimum net profit per exported
+kWh, after wear), leaving self-consumption and spike response untouched.
+
 **Daily full-charge insurance** (`daily_target_soc`, default 0 = off): a
 rational optimizer only charges enough for the *forecast* — unforecast spikes
 and surprise usage are worth nothing to it, so on a mild day it may stop at
