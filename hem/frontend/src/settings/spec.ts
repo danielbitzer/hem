@@ -245,7 +245,7 @@ export const SECTIONS: SectionSpec[] = [
           "whichever is higher — the fixed penalty, or this multiple × the median " +
           "forward import price. Lets the penalty track the tariff so the target " +
           "still gets filled on dear days. 0 disables the scaling (fixed penalty " +
-          "only); a few × is plenty (EMHASS uses ~100×).",
+          "only); a few × is plenty.",
         { min: 0, max: 100, step: 0.5, default: "0" },
       ),
     ],

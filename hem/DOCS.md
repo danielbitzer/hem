@@ -85,10 +85,9 @@ the target on dear evenings, either raise it or set
 the fixed penalty, not instead of it: each solve uses whichever is higher —
 the fixed penalty, or the multiple × the median forward import price — so the
 penalty tracks the tariff and the target dominates dear days too (a few × is
-plenty; EMHASS uses ~100×). Note that a
-single-instant fill cannot survive a *negative* feed-in tomorrow (refilling
-is then free, so the battery may dump tonight and still hit the target) — that
-is what the export floor / deadband below is for.
+plenty). Note that a single-instant fill cannot survive a *negative* feed-in 
+tomorrow (refilling is then free, so the battery may dump tonight and still 
+hit the target) — that is what the export floor / deadband below is for.
 
 `soc_min` is **HEM's planning reserve, not the inverter's minimum SoC** — set
 it above the inverter's own floor as insurance against forecast error. HEM's

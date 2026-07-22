@@ -135,7 +135,7 @@ class Battery(BaseModel):
     daily_target_penalty_per_kwh: float = Field(default=0.10, ge=0)
     # 0 = use the fixed penalty above. >0 = also enforce a penalty of at least
     # (multiple × median forward import price), so the target dominates the
-    # tariff and actually gets filled. EMHASS uses ~100×; a few × is plenty.
+    # tariff and actually gets filled. a few × is plenty.
     daily_target_penalty_price_multiple: float = Field(default=0.0, ge=0)
 
     @model_validator(mode="after")
