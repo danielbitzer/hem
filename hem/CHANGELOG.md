@@ -12,6 +12,9 @@
   sensor (your actual PV generation power, e.g. the mkaiser package's
   `total_dc_power`) — without it replays assume zero PV. Read-only, like the
   synthetic scenarios.
+- Clarified the "Daily target price multiple" setting (UI help + DOCS): it
+  combines with the fixed penalty rather than replacing it — each solve uses
+  whichever is higher.
 
 ## 0.7.0
 
