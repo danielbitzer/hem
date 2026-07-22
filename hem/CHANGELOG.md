@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Time travel in Test mode**: pick a past moment and HEM replays the prices,
+  solar and house load Home Assistant actually recorded from then through the
+  optimizer — see how your current (or overridden) settings would have handled
+  a real day instead of a synthetic one. Starts from the battery level recorded
+  at that time (or one you set); honest about being hindsight (recorded
+  actuals, not the forecast HEM saw); reach limited by the recorder's retention
+  (~10 days by default). Real solar needs the new optional `entities.pv_power`
+  sensor (your actual PV generation power, e.g. the mkaiser package's
+  `total_dc_power`) — without it replays assume zero PV. Read-only, like the
+  synthetic scenarios.
+
 ## 0.7.0
 
 - **Optimizer economics redesign** — fixes the battery selling stored energy

@@ -100,6 +100,11 @@ export const PlanMetaSchema = z.looseObject({
   vacation: VacationInfoSchema.nullish(),
   prices_estimated: z.boolean().optional(),
   explanation: ExplanationSchema.nullish(),
+  // test mode: present on simulated plans (synthetic scenario or time travel)
+  simulated: z.boolean().optional(),
+  mode: z.string().optional(),
+  at: z.string().optional(),
+  notes: z.array(z.string()).optional(),
 });
 export type PlanMeta = z.infer<typeof PlanMetaSchema>;
 
@@ -159,15 +164,11 @@ export async function fetchScenarios(): Promise<Scenario[]> {
   return z.object({ scenarios: z.array(ScenarioSchema) }).parse(await resp.json()).scenarios;
 }
 
-export async function runSimulation(req: {
-  scenario: string;
-  soc_frac: number;
-  overrides?: SimOverrides;
-}): Promise<PlanResponse> {
-  const resp = await fetch("./api/simulate", {
+async function postSimulation(url: string, body: unknown): Promise<PlanResponse> {
+  const resp = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(req),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) {
     let detail = resp.statusText;
@@ -183,6 +184,25 @@ export async function runSimulation(req: {
     throw new Error(`simulation payload failed validation: ${z.prettifyError(parsed.error)}`);
   }
   return parsed.data;
+}
+
+export async function runSimulation(req: {
+  scenario: string;
+  soc_frac: number;
+  overrides?: SimOverrides;
+}): Promise<PlanResponse> {
+  return postSimulation("./api/simulate", req);
+}
+
+/** Time travel: replay the optimizer over recorded HA history from a past
+ * instant. `at` is a local datetime-local string; soc_frac null/omitted means
+ * "use the battery level recorded at that time". */
+export async function runHistorySimulation(req: {
+  at: string;
+  soc_frac?: number | null;
+  overrides?: SimOverrides;
+}): Promise<PlanResponse> {
+  return postSimulation("./api/simulate/history", req);
 }
 
 export async function fetchHealthError(): Promise<string> {

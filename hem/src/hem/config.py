@@ -99,6 +99,11 @@ class Entities(BaseModel):
     # Optional; enables the learned temperature response (load vs
     # cooling/heating degrees).
     outdoor_temp: str = ""
+    # ACTUAL PV generation power sensor (W or kW), e.g. the mkaiser package's
+    # total_dc_power — distinct from the pv_forecast_* forecast sensors.
+    # Optional; used by Test mode's time travel to replay real solar (without
+    # it, historical simulations assume zero PV).
+    pv_power: str = ""
 
 
 class Battery(BaseModel):

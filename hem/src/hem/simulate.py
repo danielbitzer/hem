@@ -194,7 +194,6 @@ def run_simulation(
     tz: ZoneInfo,
     overrides: SimOverrides | None = None,
 ) -> dict:
-    overrides = overrides or SimOverrides()
     if scenario_id not in SCENARIOS:
         raise KeyError(scenario_id)
     scenario = SCENARIOS[scenario_id]
@@ -211,6 +210,40 @@ def run_simulation(
     hours = np.array([t.hour + t.minute / 60 for t in starts])
     days = np.array([(t.date() - day0).days for t in starts])
     buy, sell, pv, load = (np.asarray(a, dtype=float) for a in scenario.generate(hours, days))
+
+    return simulate_solve(
+        settings,
+        grid=grid,
+        buy=buy,
+        sell=sell,
+        pv=pv,
+        load=load,
+        soc_frac=soc_frac,
+        tz=tz,
+        overrides=overrides,
+        meta_extra={"scenario": scenario_id},
+    )
+
+
+def simulate_solve(
+    settings: Settings,
+    *,
+    grid: TimeGrid,
+    buy: np.ndarray,
+    sell: np.ndarray,
+    pv: np.ndarray,
+    load: np.ndarray,
+    soc_frac: float,
+    tz: ZoneInfo,
+    overrides: SimOverrides | None = None,
+    meta_extra: dict | None = None,
+) -> dict:
+    """The shared test-mode core: apply overrides, arm the same soft levers the
+    live planner uses, solve, and shape a /api/plan-compatible response. Pure
+    CPU — callers own where the input arrays came from (synthetic scenario or
+    recorded history)."""
+    overrides = overrides or SimOverrides()
+    now = grid.start
 
     bp = battery_params(settings)
     if overrides.wear_cost_per_kwh is not None:
@@ -316,8 +349,8 @@ def run_simulation(
             "price_forecast_end": grid.end.isoformat(),
             "load_forecast": "learned",
             "simulated": True,
-            "scenario": scenario_id,
             "explanation": plan.explanation,
+            **(meta_extra or {}),
         },
         "intervals": [
             {

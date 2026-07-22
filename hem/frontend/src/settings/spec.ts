@@ -114,6 +114,16 @@ export const SECTIONS: SectionSpec[] = [
         ["sensor"],
         { optional: true, default: "" },
       ),
+      entity(
+        "entities.pv_power",
+        "PV power (actual)",
+        "Actual PV generation power sensor (W or kW), e.g. the mkaiser package's " +
+          "total_dc_power — distinct from the forecast sensors above. Used by Test " +
+          "mode's time travel to replay real solar; without it, historical replays " +
+          "assume zero PV.",
+        ["sensor"],
+        { optional: true, default: "" },
+      ),
     ],
   },
   {
