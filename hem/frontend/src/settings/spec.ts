@@ -103,7 +103,7 @@ export const SECTIONS: SectionSpec[] = [
       entity(
         "entities.load_power",
         "House load power",
-        "House load sensor (W or kW), e.g. the mkaiser package's load_power. The load " +
+        "A sensor measuring total household consumption (W or kW). The load " +
           "forecast is learned from its history. Strongly recommended: without it HEM " +
           "plans with ZERO house load.",
         ["sensor"],
@@ -120,10 +120,9 @@ export const SECTIONS: SectionSpec[] = [
       entity(
         "entities.pv_power",
         "PV power (actual)",
-        "Actual PV generation power sensor (W or kW), e.g. the mkaiser package's " +
-          "total_dc_power — distinct from the forecast sensors above. Used by Test " +
-          "mode's time travel to replay real solar; without it, historical replays " +
-          "assume zero PV.",
+        "Your inverter's actual PV generation power sensor (W or kW) — distinct " +
+          "from the forecast sensors above. Used by Test mode's time travel to " +
+          "replay real solar; without it, historical replays assume zero PV.",
         ["sensor"],
         { optional: true, default: "" },
       ),
@@ -191,8 +190,9 @@ export const SECTIONS: SectionSpec[] = [
         "Degradation cost charged against EVERY discharged kWh — including serving " +
           "your own house: set it too high and the battery sits idle while you import " +
           "at prices it should be beating. Keep it the honest physical number " +
-          "(replacement cost ÷ lifetime throughput; realistic lithium ~0.5–3c, a " +
-          "Sungrow warranty implies ~0.4c) and use the min battery export spread for " +
+          "(replacement cost ÷ lifetime throughput; realistic lithium ~0.5–3c — " +
+          "battery warranties often imply well under 1c) and use the min battery " +
+          "export spread for " +
           "\"only sell when it's worth it\" selectivity instead.",
         { unit: "$/kWh", min: 0, step: 0.01, default: "0.04" },
       ),
@@ -209,7 +209,7 @@ export const SECTIONS: SectionSpec[] = [
         kind: "select",
         default: "charge_negative",
         options: [
-          { value: "charge_negative", label: "positive = discharging (mkaiser Sungrow)" },
+          { value: "charge_negative", label: "positive = discharging" },
           { value: "charge_positive", label: "positive = charging" },
         ],
         help: "Which sign your battery power sensor reports while charging.",
