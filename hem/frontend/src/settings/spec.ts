@@ -241,10 +241,11 @@ export const SECTIONS: SectionSpec[] = [
       number(
         "battery.daily_target_penalty_price_multiple",
         "Daily target price multiple",
-        "0 = use the fixed penalty above. Otherwise enforce a penalty of at least this " +
-          "multiple of the median forward import price, so the target dominates the " +
-          "tariff and actually gets filled regardless of how dear the evening is. A few × " +
-          "is plenty (EMHASS uses ~100×).",
+        "Works WITH the fixed penalty above, not instead of it: each solve uses " +
+          "whichever is higher — the fixed penalty, or this multiple × the median " +
+          "forward import price. Lets the penalty track the tariff so the target " +
+          "still gets filled on dear days. 0 disables the scaling (fixed penalty " +
+          "only); a few × is plenty (EMHASS uses ~100×).",
         { min: 0, max: 100, step: 0.5, default: "0" },
       ),
     ],

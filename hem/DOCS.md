@@ -81,9 +81,11 @@ willingness-to-pay, so anything cheaper than it WILL be bought. Set it
 between your typical feed-in price and your typical grid buy price — e.g.
 $0.10 with ~$0.08 feed-in and ~$0.25 grid. If the battery still won't reach
 the target on dear evenings, either raise it or set
-`daily_target_penalty_price_multiple` (0 = off) to enforce a penalty of at
-least that multiple of the median forward import price, so the target
-dominates the tariff (a few × is plenty; EMHASS uses ~100×). Note that a
+`daily_target_penalty_price_multiple` (0 = off). The multiple works **with**
+the fixed penalty, not instead of it: each solve uses whichever is higher —
+the fixed penalty, or the multiple × the median forward import price — so the
+penalty tracks the tariff and the target dominates dear days too (a few × is
+plenty; EMHASS uses ~100×). Note that a
 single-instant fill cannot survive a *negative* feed-in tomorrow (refilling
 is then free, so the battery may dump tonight and still hit the target) — that
 is what the export floor / deadband below is for.
