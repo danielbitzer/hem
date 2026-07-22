@@ -29,6 +29,9 @@ def test_minimal_config_defaults():
     settings = make_settings()
     assert settings.optimizer.horizon_hours == 36
     assert settings.battery.soc_min == 0.10
+    # haircut defaults OFF: Amber's advanced predicted pricing already tempers
+    # over-forecast spikes; a second haircut double-discounts them
+    assert settings.optimizer.forecast_haircut == 0.0
     # HEM starts disabled: the enable toggle in the UI is a deliberate act
     assert settings.enabled is False
     # no load sensor is a valid (degraded) config — HEM plans with zero load

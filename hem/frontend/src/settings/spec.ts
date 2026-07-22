@@ -16,6 +16,9 @@ export interface FieldSpec {
   step?: number;
   /** No server-side default — must be filled before the form can save. */
   required?: boolean;
+  /** Stored as a fraction/multiplier, displayed ×100 with a "%" unit.
+   * min/max/step/default in the spec are in DISPLAY (percent) units. */
+  percent?: boolean;
   /** Default shown for fresh installs (mirrors the pydantic default). */
   default?: string | boolean;
   options?: { value: string; label: string }[];
@@ -170,20 +173,23 @@ export const SECTIONS: SectionSpec[] = [
           "inverter's own floor as insurance against forecast error. Deliberate " +
           "discharges stop here; idle self-consumption can still drain below it, which " +
           "is what the reserve insures against.",
-        { min: 0, max: 1, step: 0.01, default: "0.1" },
+        { unit: "%", percent: true, min: 0, max: 100, step: 1, default: "10" },
       ),
-      number("battery.soc_max", "SoC max", "Upper SoC bound as a fraction of capacity.", {
+      number("battery.soc_max", "SoC max", "Upper SoC bound as a percentage of capacity.", {
+        unit: "%",
+        percent: true,
         min: 0,
-        max: 1,
-        step: 0.01,
-        default: "1",
+        max: 100,
+        step: 1,
+        default: "100",
       }),
       number(
         "battery.wear_cost_per_kwh",
         "Wear cost",
-        "Degradation cost charged against every discharged kWh — e.g. replacement cost " +
-          "divided by lifetime throughput ($6000 / 38 MWh ≈ $0.16, or much lower if the " +
-          "battery will outlive its warranty).",
+        "Degradation cost charged against every discharged kWh — replacement cost ÷ " +
+          "lifetime throughput. Realistic lithium is ~0.5–3c (a Sungrow warranty implies " +
+          "~0.4c); much above ~4c suppresses genuine arbitrage. Throughput only — it " +
+          "never devalues stored energy, so raising it cycles the battery LESS.",
         { unit: "$/kWh", min: 0, step: 0.01, default: "0.04" },
       ),
       {
@@ -207,12 +213,12 @@ export const SECTIONS: SectionSpec[] = [
       number(
         "battery.daily_target_soc",
         "Daily full-charge target",
-        "Daily insurance target SoC (fraction of capacity; 0 disables). A rational " +
+        "Daily insurance target SoC (% of capacity; 0 disables). A rational " +
           "optimizer only charges enough for the forecast — this softly requires the " +
           "battery at the target from the time below, HELD through the evening peak, so " +
           "unforecast spikes and surprise usage find it charged. Freed to discharge once " +
           "the hold window ends.",
-        { min: 0, max: 1, step: 0.05, default: "0" },
+        { unit: "%", percent: true, min: 0, max: 100, step: 5, default: "0" },
       ),
       {
         path: "battery.daily_target_time",
@@ -293,12 +299,12 @@ export const SECTIONS: SectionSpec[] = [
       number(
         "load.buffer",
         "Forecast buffer",
-        "Safety margin on the learned forecast: the whole forecast is scaled by " +
-          "(1 + buffer), so 0.1 plans for 10% more house load everywhere, including " +
-          "temperature-driven peaks. The learned profile is a mean — buffer it if " +
-          "you'd rather the planner run conservative. Distinct from the SoC reserve " +
-          "and the daily target, which shape battery policy rather than the forecast.",
-        { min: 0, max: 1, step: 0.05, default: "0" },
+        "Safety margin on the learned forecast: 10% plans for 10% more house load " +
+          "everywhere, including temperature-driven peaks. The learned profile is a " +
+          "mean — buffer it if you'd rather the planner run conservative. Distinct " +
+          "from the SoC reserve and the daily target, which shape battery policy " +
+          "rather than the forecast.",
+        { unit: "%", percent: true, min: 0, max: 100, step: 5, default: "0" },
       ),
     ],
   },
@@ -335,9 +341,10 @@ export const SECTIONS: SectionSpec[] = [
       number(
         "optimizer.hold_value_scaling",
         "Hold value scaling",
-        "Multiplier on the auto hold value. >1 makes the battery holdier (keeps charge " +
-          "longer); <1 makes it trade more freely. 1.0 = the raw rebuy anchor.",
-        { min: 0, max: 5, step: 0.05, default: "1" },
+        "Scales the auto hold value. Above 100% makes the battery holdier (keeps " +
+          "charge longer); below 100% makes it trade more freely. 100% = the raw " +
+          "rebuy anchor.",
+        { unit: "%", percent: true, min: 0, max: 500, step: 5, default: "100" },
       ),
       number(
         "optimizer.min_battery_export_spread",
@@ -349,12 +356,6 @@ export const SECTIONS: SectionSpec[] = [
         { unit: "$/kWh", min: 0, max: 10, step: 0.01, default: "0" },
       ),
       number(
-        "optimizer.solver_timeout_s",
-        "Solver timeout",
-        "HiGHS time limit per solve; normal solves take tens of milliseconds.",
-        { unit: "s", min: 1, max: 60, step: 1, default: "30" },
-      ),
-      number(
         "optimizer.action_switch_threshold_dollars",
         "Action switch threshold",
         "Hysteresis: the current action only changes if switching improves the horizon " +
@@ -363,11 +364,13 @@ export const SECTIONS: SectionSpec[] = [
       ),
       number(
         "optimizer.forecast_haircut",
-        "Forecast haircut",
-        "Fraction of the above-median excess shaved off sell prices more than 6h out, " +
-          "so distant phantom spikes don't distort near-term decisions. The spike " +
-          "reserve reads raw prices, unaffected.",
-        { min: 0, max: 1, step: 0.05, default: "0.2" },
+        "Sell price forecast haircut",
+        "Shaves this share of the above-median excess off sell prices more than 6h " +
+          "out, so distant phantom spikes don't distort near-term decisions (the spike " +
+          "reserve reads raw prices, unaffected). Off by default: Amber's advanced " +
+          "predicted pricing already tempers over-forecast spikes — turn it up if your " +
+          "price sensor uses raw AEMO-style forecasts.",
+        { unit: "%", percent: true, min: 0, max: 100, step: 5, default: "0" },
       ),
     ],
   },

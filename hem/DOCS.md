@@ -40,7 +40,11 @@ updates, previous version in `.bak`). Note ingress is HA-session
 authenticated: any logged-in HA user who can open the panel can edit the
 config — the same trust level as the rest of the dashboard.
 
-The sections below document what each setting means in depth.
+The sections below document what each setting means in depth. Values quoted
+here are what the config **document** stores; ratio-type settings (SoC
+bounds, the daily target, the load buffer, hold value scaling, the forecast
+haircut) are stored as 0–1 fractions but displayed and edited as
+**percentages** in the Settings UI.
 
 ### `entities`
 
@@ -205,13 +209,20 @@ buffer until learning is active. The goal state is always a learned forecast.
   won't churn export for pennies on the 5-minute reprices. The automatic
   counterpart to `grid.min_battery_export_price`. A cent or two is a sensible starting
   point if you see marginal exports you'd rather not make.
-- `solver_timeout_s` (30, max 60) — HiGHS time limit per solve; normal solves
-  take tens of milliseconds.
+- `solver_timeout_s` (30, max 60) — HiGHS time limit per solve. Config-file
+  only (not in the Settings UI): normal solves take tens of milliseconds, so
+  this is a never-fires safety valve — and if it ever does fire, the planner
+  falls back to shifting the previous plan forward (`solver_status: stale`)
+  rather than doing anything abrupt.
 - `action_switch_threshold_dollars` (0.02) — hysteresis: the current action
   only changes if switching improves the horizon objective by more than this.
-- `forecast_haircut` (0.2) — fraction of the above-median excess shaved off
-  sell prices more than 6 h out, so distant phantom spikes don't distort
-  near-term decisions. The spike reserve reads raw prices, unaffected.
+- `forecast_haircut` (0 = off; "Sell price forecast haircut" in the UI) — the
+  share of the above-median excess shaved off sell prices more than 6 h out,
+  so distant phantom spikes don't distort near-term decisions. Off by
+  default: Amber's advanced predicted pricing (the recommended sensor mode)
+  already tempers over-forecast spikes, so a second haircut double-discounts
+  them — turn it up only if your price sensor carries raw AEMO-style
+  forecasts. The spike reserve reads raw prices, unaffected.
 
 ### `spike`
 

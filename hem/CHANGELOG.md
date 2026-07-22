@@ -15,6 +15,20 @@
 - Clarified the "Daily target price multiple" setting (UI help + DOCS): it
   combines with the fixed penalty rather than replacing it — each solve uses
   whichever is higher.
+- Settings polish:
+  - Ratio settings (SoC min/max, daily full-charge target, load forecast
+    buffer, hold value scaling, forecast haircut) are now displayed and
+    edited as **percentages** in the UI (stored values unchanged).
+  - **Forecast haircut now defaults to off** and is renamed "Sell price
+    forecast haircut": Amber's advanced predicted pricing already tempers
+    over-forecast spikes, so a second haircut double-discounted them. Set it
+    above 0 only if your price sensor carries raw AEMO-style forecasts.
+    (Existing saved configs keep their stored value.)
+  - "Solver timeout" removed from the Settings UI (config-file only) — it's a
+    never-fires safety valve, and a timeout already falls back to the
+    previous plan.
+  - Wear cost help now matches the redesigned economics (realistic ~0.5–3c/kWh,
+    throughput-only) instead of suggesting a 16c-style estimate.
 
 ## 0.7.0
 

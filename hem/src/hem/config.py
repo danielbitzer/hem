@@ -207,9 +207,16 @@ class Optimizer(BaseModel):
     # counterpart to grid.min_battery_export_price.
     min_battery_export_spread: float = Field(default=0.0, ge=0)
     # must stay below the 90s cycle timeout in main.py
+    # Not exposed in the Settings UI (config-file only): a timeout is a
+    # never-fires safety valve — solves take tens of ms — and on timeout the
+    # planner falls back to the previous plan anyway.
     solver_timeout_s: int = Field(default=30, ge=1, le=60)
     action_switch_threshold_dollars: float = Field(default=0.02, ge=0)
-    forecast_haircut: float = Field(default=0.2, ge=0, le=1)
+    # Sell-price forecast haircut. Defaults OFF: Amber's advanced predicted
+    # pricing (the recommended sensor mode) already tempers over-forecast
+    # spikes, so a second haircut double-discounts them. Turn it up if
+    # optimizing on raw AEMO-style forecasts.
+    forecast_haircut: float = Field(default=0.0, ge=0, le=1)
 
 
 class Spike(BaseModel):

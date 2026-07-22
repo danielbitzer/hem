@@ -118,7 +118,8 @@ export function TestView() {
 
   const overrides: SimOverrides = {
     wear_cost_per_kwh: numOrNull(wear),
-    hold_value_scaling: numOrNull(holdScaling),
+    // displayed as %, sent as the multiplier the API expects (null = saved)
+    hold_value_scaling: numOrNull(holdScaling) !== null ? numOrNull(holdScaling)! / 100 : null,
     min_battery_export_spread: numOrNull(exportSpread),
     min_battery_export_price: numOrNull(minExport),
     daily_target_soc: numOrNull(targetSoc),
@@ -258,11 +259,11 @@ export function TestView() {
               />
               <Override
                 label="Hold value scaling"
-                unit="×"
+                unit="%"
                 placeholder="saved"
                 value={holdScaling}
                 onChange={setHoldScaling}
-                help="Multiplier on the rebuy-anchored hold value. >1 = holdier, <1 = trades more."
+                help="Scales the rebuy-anchored hold value. >100% = holdier, <100% = trades more."
               />
               <Override
                 label="Min battery export spread"
