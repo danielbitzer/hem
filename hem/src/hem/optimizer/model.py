@@ -58,6 +58,11 @@ class BatteryParams:
 class GridParams:
     import_limit_kw: float
     export_limit_kw: float
+    # Below this feed-in price ($/kWh), forbid BATTERY-sourced grid export —
+    # the battery still covers the house, but never sells stored energy this
+    # cheap. PV surplus can still export. None = no manual floor (the automatic
+    # deadband in OptimizerConfig may still apply).
+    min_battery_export_price: float | None = None
 
 
 @dataclass(frozen=True)
@@ -72,23 +77,31 @@ class OptimizerInputs:
     # Per-step discharge cap override (kW); None -> battery.max_discharge_kw
     # everywhere. Used to raise the cap during a confirmed spike interval.
     max_discharge_kw_step: np.ndarray | None = None
-    # Soft INSTANTANEOUS SoC targets, length T+1 aligned with soc[]; 0 =
-    # inactive. Used for the daily full-charge insurance target: unlike the
-    # reserve (a floor over a window), this binds at single instants — the
-    # battery is free to discharge hard right after each target.
+    # Soft daily SoC target FLOOR, length T aligned with soc[1:] (same
+    # convention as reserve_kwh); 0 = inactive. The daily full-charge
+    # insurance: held across a window (target time through the evening peak),
+    # so "be full for the evening" actually keeps it full for the evening, not
+    # just at a single 3pm instant. The battery is free to discharge once the
+    # window ends.
     soc_target_kwh: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
 class OptimizerConfig:
-    terminal_value: float  # $/kWh valuing residual stored energy
+    terminal_value: float  # $/kWh valuing residual stored energy (the hold value)
     # Slack cost accumulates per step: effectively $/kWh PER HOUR spent below
     # the reserve floor, so persistent violations cost more than momentary ones.
     reserve_penalty_per_kwh: float
     solver_timeout_s: float
-    # $/kWh charged ONCE per missing kWh at each soc_target_kwh instant — the
-    # explicit insurance premium for not being full at the daily target.
+    # $/kWh PER HOUR of shortfall below the (windowed) daily SoC target floor —
+    # the insurance premium for not being full through the target window.
     soc_target_penalty_per_kwh: float = 0.0
+    # Minimum arbitrage spread ($/kWh): the battery only sells to the grid when
+    # the feed-in beats the value of holding by at least this margin. 0 = off
+    # (export whenever marginally profitable). The AUTOMATIC counterpart to
+    # grid.min_battery_export_price — it moves with the hold value instead of a fixed
+    # dollar floor, killing pennies-margin export churn on the 5-min reprices.
+    min_battery_export_spread: float = 0.0
 
 
 @dataclass
@@ -112,13 +125,43 @@ class SolverError(Exception):
     pass
 
 
-def auto_terminal_value(buy: np.ndarray, battery: BatteryParams) -> float:
-    """Value residual stored energy at 'what buying later would plausibly cost':
-    median buy price discounted by discharge efficiency, net of wear."""
-    return max(
-        0.0,
-        float(np.median(buy)) * battery.efficiency_discharge - battery.wear_cost_per_kwh,
+def auto_terminal_value(
+    buy: np.ndarray,
+    battery: BatteryParams,
+    *,
+    floor: float = 0.01,
+    scaling: float = 1.0,
+) -> float:
+    """The hold value: what a kWh left in the battery at the horizon's end is
+    worth. Anchored to REBUY COST — the cheapest forward import price grossed
+    up for charge losses (min(buy) / efficiency_charge) — because that is what
+    it would cost to put that energy back. Scaled, then floored ABOVE ZERO so a
+    cheap day never values stored energy at ~$0.
+
+    The rebuy anchor does NOT subtract wear, so on a volatile day wear enters
+    the export threshold with the right sign (sell must clear wear +
+    hold/eff_discharge, so more wear means LESS export — the old
+    median*eta - wear formula had this backwards, which is why raising wear made
+    the cheap selling worse).
+
+    One guard: on a FLAT or low-spread horizon the rebuy anchor (~current price
+    grossed up) would exceed the break-even for self-consuming stored energy, so
+    the battery would hoard and import to run the house — technically a wash but
+    a bad look, and it strands the free solar already in the pack. Cap the hold
+    value at that break-even (median*eta_d - wear) so a flat day still self-
+    consumes. Where the cap binds it does reintroduce the wear term, but only on
+    low-spread horizons with no arbitrage to protect — and Amber feed-in sits
+    well below buy, so it does not reopen cheap export in practice. See CHANGELOG
+    for the full rationale.
+
+    Scaling multiplies the rebuy anchor only (not the cap): a scaling > 1 makes
+    the battery holdier without lifting the hold value past the self-consumption
+    break-even, which would defeat the cap."""
+    rebuy = float(np.min(buy)) / battery.efficiency_charge
+    self_consumption_cap = (
+        float(np.median(buy)) * battery.efficiency_discharge - battery.wear_cost_per_kwh
     )
+    return max(floor, min(scaling * rebuy, self_consumption_cap))
 
 
 def solve(
@@ -184,6 +227,35 @@ def solve(
     ]
     if not battery.allow_grid_charge:
         constraints.append(pc <= pv_u)
+    # Export floor: below it, cap the battery's DISCHARGE at the house load NOT
+    # already covered by PV, so stored energy covers the house but never routes
+    # to the grid — not even indirectly by displacing PV that then exports.
+    # Grid import/charging and PV export are untouched. Two sources, whichever
+    # is stricter:
+    #   * grid.min_battery_export_price   — a fixed manual floor ($/kWh feed-in).
+    #   * config.min_battery_export_spread — the automatic deadband: sell must beat the
+    #     value of holding (hold_value/eff_discharge + wear) by this margin, or
+    #     holding wins. Moves with the hold value instead of a fixed dollar.
+    # NB cap pd at the RESIDUAL load (load - pv), not the full load: capping at
+    # full load lets the battery serve the whole house while PV exports below
+    # the floor — the stored kWh reaching the grid by substitution. And do NOT
+    # bound `ge <= pv_u - pc` instead: with ge >= 0 that forces pc <= pv_u,
+    # forbidding grid charging overnight (pv_u = 0) at exactly the cheap,
+    # low-feed-in windows you want to charge in. Uses the raw forecast sell.
+    export_floors: list[float] = []
+    if grid.min_battery_export_price is not None:
+        export_floors.append(grid.min_battery_export_price)
+    if config.min_battery_export_spread > 0:
+        export_floors.append(
+            config.terminal_value / battery.efficiency_discharge
+            + battery.wear_cost_per_kwh
+            + config.min_battery_export_spread
+        )
+    if export_floors:
+        below = np.where(inputs.sell < max(export_floors))[0]
+        if below.size:
+            residual_load = np.maximum(0.0, inputs.load - inputs.pv)
+            constraints.append(pd[below] <= residual_load[below])
     # The self-consumption envelope: charge from PV only, export only PV
     # leftovers (no battery export); serving load from the battery is free.
     self_consumption = [pc[0] <= pv_u[0], ge[0] <= pv_u[0] - pc[0]]
@@ -208,11 +280,14 @@ def solve(
         and np.any(inputs.soc_target_kwh > 0)
         and config.soc_target_penalty_per_kwh > 0
     ):
-        # One-shot penalty per instant (no dt weighting): being short at the
-        # target moment is the insured event, however long the steps around it.
-        target_slack = cp.Variable(T + 1, nonneg=True)
-        constraints.append(soc >= inputs.soc_target_kwh - target_slack)
-        cost = cost + config.soc_target_penalty_per_kwh * cp.sum(target_slack)
+        # Windowed soft floor (dt-weighted, like the reserve): the premium
+        # accrues per kWh-hour of shortfall, so being short for the whole
+        # evening costs more than a momentary dip. Aligned with soc[1:].
+        target_slack = cp.Variable(T, nonneg=True)
+        constraints.append(soc[1:] >= inputs.soc_target_kwh - target_slack)
+        cost = cost + config.soc_target_penalty_per_kwh * cp.sum(
+            cp.multiply(target_slack, dt)
+        )
     if inputs.reserve_kwh is not None and np.any(inputs.reserve_kwh > 0):
         slack = cp.Variable(T, nonneg=True)
         constraints.append(soc[1:] >= inputs.reserve_kwh - slack)

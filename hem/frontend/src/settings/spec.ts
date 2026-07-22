@@ -199,9 +199,9 @@ export const SECTIONS: SectionSpec[] = [
         "Daily full-charge target",
         "Daily insurance target SoC (fraction of capacity; 0 disables). A rational " +
           "optimizer only charges enough for the forecast — this softly requires the " +
-          "battery at the target by the hour below, so unforecast spikes and surprise " +
-          "usage find it charged. Binds at an instant, not a floor: the battery still " +
-          "discharges freely into the evening peak.",
+          "battery at the target from the time below, HELD through the evening peak, so " +
+          "unforecast spikes and surprise usage find it charged. Freed to discharge once " +
+          "the hold window ends.",
         { min: 0, max: 1, step: 0.05, default: "0" },
       ),
       {
@@ -209,16 +209,33 @@ export const SECTIONS: SectionSpec[] = [
         label: "Daily target time",
         kind: "time",
         default: "15:00",
-        help: "Local time of day the daily target applies at (default 15:00, before the evening ramp).",
+        help: "Local time the target window starts (default 15:00, before the evening ramp).",
       },
+      number(
+        "battery.daily_target_hold_hours",
+        "Daily target hold",
+        "How long to hold the target as a floor after the target time — the window " +
+          "through the evening peak (e.g. 4h = full from 3pm to 7pm). 0 pins a single " +
+          "instant instead of a floor.",
+        { unit: "h", min: 0, max: 24, step: 0.5, default: "4" },
+      ),
       number(
         "battery.daily_target_penalty_per_kwh",
         "Daily target penalty",
-        "Maximum willingness-to-pay per missing kWh at the target — anything cheaper " +
-          "WILL be bought. Set it between your typical feed-in price and your typical " +
-          "grid buy price (e.g. $0.10 with ~$0.08 feed-in and ~$0.25 grid); above the " +
-          "grid price the planner will import at full price to hit the target.",
-        { unit: "$/kWh", min: 0, max: 10, step: 0.01, default: "0.1" },
+        "Willingness-to-pay per kWh-HOUR of shortfall below the target floor — anything " +
+          "cheaper WILL be bought to fill it. Between your typical feed-in and grid buy " +
+          "price (e.g. $0.10 with ~$0.08 feed-in and ~$0.25 grid). Raise it, or use the " +
+          "price multiple below, if the battery still won't reach the target.",
+        { unit: "$/kWh·h", min: 0, max: 10, step: 0.01, default: "0.1" },
+      ),
+      number(
+        "battery.daily_target_penalty_price_multiple",
+        "Daily target price multiple",
+        "0 = use the fixed penalty above. Otherwise enforce a penalty of at least this " +
+          "multiple of the median forward import price, so the target dominates the " +
+          "tariff and actually gets filled regardless of how dear the evening is. A few × " +
+          "is plenty (EMHASS uses ~100×).",
+        { min: 0, max: 100, step: 0.5, default: "0" },
       ),
     ],
   },
@@ -243,6 +260,15 @@ export const SECTIONS: SectionSpec[] = [
           "If you raise the spike discharge cap, raise this to match or the extra power " +
           "has nowhere to go.",
         { unit: "kW", min: 0, step: 0.5, required: true },
+      ),
+      number(
+        "grid.min_battery_export_price",
+        "Min battery export price",
+        "Lowest feed-in price at which HEM will discharge the battery to the grid. " +
+          "Below it the battery still covers the house but won't sell stored energy; " +
+          "PV surplus can still export. Blank = no manual floor (the automatic export " +
+          "deadband under Optimizer may still apply).",
+        { unit: "$/kWh", step: 0.01 },
       ),
     ],
   },
@@ -279,15 +305,38 @@ export const SECTIONS: SectionSpec[] = [
       ),
       {
         path: "optimizer.terminal_soc_value",
-        label: "Terminal SoC value",
+        label: "Hold value (terminal SoC value)",
         kind: "text",
         default: "auto",
         help:
-          "How leftover stored energy is valued at the horizon end, in $/kWh (NOT a " +
-          "target SoC). \"auto\" = median buy price × discharge efficiency − wear cost. " +
-          "Without it the optimizer would dump the battery at any positive price before " +
-          "the horizon. Enter \"auto\" or a number.",
+          "What a stored kWh is worth at the horizon end, in $/kWh (NOT a target SoC). " +
+          "\"auto\" anchors it to rebuy cost — the cheapest forward import grossed up for " +
+          "charge losses — scaled and floored below. Without it the optimizer would dump " +
+          "the battery before the horizon. Enter \"auto\" or a fixed number.",
       },
+      number(
+        "optimizer.hold_value_floor",
+        "Hold value floor",
+        "Lower bound on the auto hold value ($/kWh), so a cheap day never values stored " +
+          "energy at ~$0 (which was what made the battery sell cheap). Predbat uses ~1c.",
+        { unit: "$/kWh", min: 0, step: 0.01, default: "0.01" },
+      ),
+      number(
+        "optimizer.hold_value_scaling",
+        "Hold value scaling",
+        "Multiplier on the auto hold value. >1 makes the battery holdier (keeps charge " +
+          "longer); <1 makes it trade more freely. 1.0 = the raw rebuy anchor.",
+        { min: 0, max: 5, step: 0.05, default: "1" },
+      ),
+      number(
+        "optimizer.min_battery_export_spread",
+        "Min battery export spread",
+        "Automatic export deadband: the battery only sells to the grid when the feed-in " +
+          "beats the value of holding by at least this margin, killing pennies-margin " +
+          "churn. 0 = off (sell whenever marginally profitable). The automatic " +
+          "counterpart to grid min battery export price.",
+        { unit: "$/kWh", min: 0, max: 10, step: 0.01, default: "0" },
+      ),
       number(
         "optimizer.solver_timeout_s",
         "Solver timeout",

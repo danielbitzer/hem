@@ -306,9 +306,11 @@ def test_empty_battery_flat_prices_serves_load_by_import_not_charging():
     assert float(np.min(sol.grid_import_kw)) >= 1.5 - 1e-6  # load fed directly
 
 
-def _target_at(T: int, index: int, kwh: float) -> np.ndarray:
-    target = np.zeros(T + 1)
-    target[index] = kwh
+def _target_window(T: int, lo: int, hi: int, kwh: float) -> np.ndarray:
+    """Windowed daily-target floor (length T, aligned with soc[1:]): require
+    kwh across the end-of-step SoCs soc[lo+1 .. hi]."""
+    target = np.zeros(T)
+    target[lo:hi] = kwh
     return target
 
 
@@ -322,44 +324,139 @@ def test_daily_target_fills_in_cheap_window():
     sol_free = solve(free, BATTERY, GRID, config(terminal_value=0.0))
     assert sol_free.charge_kw.max() < 0.01  # control: no reason to charge
 
+    # floor across soc[8], soc[9] (window steps 7..8)
     inputs = make_inputs(
         T=12, buy=buy, sell=0.0, load=0.0, soc0=2.0,
-        soc_target=_target_at(12, 8, BATTERY.soc_max_kwh),
+        soc_target=_target_window(12, 7, 9, BATTERY.soc_max_kwh),
     )
-    sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.0, target_penalty=0.10))
+    sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.0, target_penalty=0.30))
     assert sol.soc_kwh[8] == pytest.approx(BATTERY.soc_max_kwh, abs=1e-3)
     # the fill happened inside the cheap window, not at 0.30
     assert float(sol.charge_kw[0]) < 0.01
-    # and the target is an instant, not a floor: free to discharge after it
-    # (nothing to discharge INTO here with sell=0, so just assert no new floor)
-    assert float(sol.soc_kwh[-1]) <= BATTERY.soc_max_kwh
 
 
 def test_daily_target_yields_when_filling_costs_more_than_the_premium():
-    """Soft, not dumb: at buy 0.40 the marginal fill costs ~0.42/kWh; with a
-    0.10 premium the plan takes the slack instead of overpaying."""
+    """Soft, not dumb: at buy 0.40 the marginal fill costs ~0.42/kWh; a small
+    premium (0.10/kWh-hour over a 1h window) doesn't justify overpaying."""
     inputs = make_inputs(
         T=12, buy=0.40, sell=0.0, load=0.0, soc0=2.0,
-        soc_target=_target_at(12, 8, BATTERY.soc_max_kwh),
+        soc_target=_target_window(12, 7, 9, BATTERY.soc_max_kwh),
     )
     sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.0, target_penalty=0.10))
     assert sol.charge_kw.max() < 0.01  # refused to fill at a loss
     assert sol.soc_kwh[8] == pytest.approx(2.0, abs=1e-3)
 
 
-def test_daily_target_is_an_instant_not_a_floor():
-    """After the target instant the battery must discharge freely — the
-    distinguishing behavior vs a persistent floor."""
+def test_daily_target_holds_through_window_then_frees():
+    """A FLOOR across the window (the redesign): full through the whole target
+    window, then free to discharge once it ends — not a single instant it can
+    dump the moment after."""
     buy = np.full(12, 0.30)
-    buy[1:8] = 0.05
+    buy[1:6] = 0.05
     sell = np.zeros(12)
-    sell[9:] = 0.50  # good export window AFTER the target instant
+    sell[9:] = 0.50  # good export window AFTER the target window ends
+    # floor across soc[7], soc[8], soc[9] (window steps 6..8)
     inputs = make_inputs(
         T=12, buy=buy, sell=sell, load=0.0, soc0=2.0,
-        soc_target=_target_at(12, 8, BATTERY.soc_max_kwh),
+        soc_target=_target_window(12, 6, 9, BATTERY.soc_max_kwh),
     )
-    sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.0, target_penalty=0.10))
-    assert sol.soc_kwh[8] == pytest.approx(BATTERY.soc_max_kwh, abs=1e-3)  # hit the target
-    # ...then discharges flat-out into the sell window: no lingering floor
+    sol = solve(inputs, BATTERY, GRID, config(terminal_value=0.0, target_penalty=0.30))
+    # held full across the WHOLE window, not just one instant
+    assert sol.soc_kwh[7] == pytest.approx(BATTERY.soc_max_kwh, abs=1e-2)
+    assert sol.soc_kwh[9] == pytest.approx(BATTERY.soc_max_kwh, abs=1e-2)
+    # ...then discharges flat-out into the sell window: floor lifts after
     assert np.allclose(sol.discharge_kw[9:], BATTERY.max_discharge_kw, atol=0.01)
     assert sol.soc_kwh[-1] < BATTERY.soc_max_kwh - 7.0  # well below the target
+
+
+# ---- the hold-value redesign -------------------------------------------------
+
+
+def test_hold_value_anchors_to_rebuy_and_floors_above_zero():
+    """On a day with real spread the hold value is the cheapest forward import
+    grossed up for charge loss (the rebuy anchor), floored above zero — never
+    ~$0 (that was the cheap-export bug), and independent of wear so raising wear
+    can't invert the export decision."""
+    buy = np.concatenate([np.full(6, 0.05), np.full(18, 0.30)])  # wide spread
+    hv = auto_terminal_value(buy, BATTERY)
+    assert hv == pytest.approx(0.05 / BATTERY.efficiency_charge, abs=1e-6)  # rebuy binds
+    # a high-wear battery gets the SAME hold value (rebuy has no wear term)
+    worn = BatteryParams(**{**BATTERY.__dict__, "wear_cost_per_kwh": 0.20})
+    assert auto_terminal_value(buy, worn) == pytest.approx(hv, abs=1e-6)
+    # the floor bites when every forward price is negative
+    neg = np.full(12, -0.05)
+    assert auto_terminal_value(neg, BATTERY, floor=0.01) == pytest.approx(0.01)
+    # a flat horizon caps at the self-consumption break-even (median*eta - wear),
+    # BELOW rebuy, so the battery still runs the house instead of hoarding
+    flat = np.full(12, 0.30)
+    cap = 0.30 * BATTERY.efficiency_discharge - BATTERY.wear_cost_per_kwh
+    assert auto_terminal_value(flat, BATTERY) == pytest.approx(cap, abs=1e-6)
+    # scaling multiplies the rebuy anchor only, never lifting past the cap (or
+    # the self-consumption guard would be defeated)
+    assert auto_terminal_value(flat, BATTERY, scaling=1.5) == pytest.approx(cap, abs=1e-6)
+
+
+def test_higher_wear_reduces_export_not_increases_it():
+    """The sign fix: with the rebuy anchor, raising wear lifts the export
+    threshold, so a wear-conscious battery sells LESS — the opposite of the old
+    median*eta - wear formula, which made more wear invite cheap selling."""
+    buy = np.concatenate([np.full(10, 0.10), np.full(14, 0.20)])
+    sell = np.full(24, 0.08)
+    sell[12:14] = 0.30  # a modest sell bump
+    kept = 0
+    for wear in (0.02, 0.25):
+        b = BatteryParams(**{**BATTERY.__dict__, "wear_cost_per_kwh": wear})
+        hv = auto_terminal_value(buy, b)
+        sol = solve(make_inputs(buy=buy, sell=sell, soc0=10.0), b, GRID,
+                    config(terminal_value=hv))
+        if sol.grid_export_kw[12] < 0.05:
+            kept += 1
+    assert kept == 1  # low wear exports into the bump, high wear holds
+
+
+def test_min_battery_export_spread_deadband_suppresses_thin_export():
+    """The automatic deadband: a feed-in that only just beats holding is not
+    worth the cycle. A 0.02 spread lifts the battery-export floor above the
+    thin margin and forbids the sale."""
+    buy = np.full(24, 0.30)
+    buy[:6] = 0.08  # cheap overnight -> low rebuy hold value
+    inputs = make_inputs(buy=buy, sell=0.14, pv=0.0, load=0.5, soc0=10.0)
+    hv = auto_terminal_value(buy, BATTERY)
+    thin = solve(inputs, BATTERY, GRID, config(terminal_value=hv))
+    guarded = solve(inputs, BATTERY, GRID,
+                    OptimizerConfig(terminal_value=hv, reserve_penalty_per_kwh=0.5,
+                                    solver_timeout_s=30, min_battery_export_spread=0.02))
+    assert thin.grid_export_kw.max() > 1.0  # would export without the deadband
+    assert guarded.grid_export_kw.max() < 0.01  # deadband holds it
+
+
+def test_min_battery_export_price_blocks_indirect_export_via_pv_displacement():
+    """The manual floor caps battery discharge at the load PV can't cover, so
+    stored energy never reaches the grid even indirectly. With PV > load the
+    battery is fully blocked (PV covers the house and exports the surplus);
+    without the floor it would discharge to free even more PV for export."""
+    inputs = make_inputs(buy=0.30, sell=0.10, pv=4.0, load=0.5, soc0=10.0)
+    no_floor = GridParams(import_limit_kw=15.0, export_limit_kw=5.0)
+    floored = GridParams(import_limit_kw=15.0, export_limit_kw=5.0, min_battery_export_price=0.15)
+    free = solve(inputs, BATTERY, no_floor, config(terminal_value=0.05))
+    held = solve(inputs, BATTERY, floored, config(terminal_value=0.05))
+    assert free.discharge_kw.max() > 1.0  # unconstrained: battery sells via PV
+    assert held.discharge_kw.max() < 0.01  # PV already covers load -> fully blocked
+    assert held.grid_export_kw.max() == pytest.approx(3.5, abs=0.05)  # only PV surplus
+    # and partial PV: battery may cover only the load PV can't (0.5 - 0.3 = 0.2)
+    partial = make_inputs(buy=0.30, sell=0.10, pv=0.3, load=0.5, soc0=10.0)
+    held2 = solve(partial, BATTERY, floored, config(terminal_value=0.05))
+    assert held2.discharge_kw.max() < 0.21
+    assert held2.grid_export_kw.max() < 0.01  # nothing left to export
+
+
+def test_min_battery_export_price_does_not_block_grid_charging():
+    """Regression: the floor must cap battery DISCHARGE, not force pc <= pv_u.
+    Overnight (pv=0) grid charging into a cheap window must still happen."""
+    buy = np.full(24, 0.30)
+    buy[0:6] = 0.02  # cheap overnight window, below the export floor
+    grid = GridParams(import_limit_kw=15.0, export_limit_kw=5.0, min_battery_export_price=0.15)
+    inputs = make_inputs(buy=buy, sell=0.10, pv=0.0, load=0.5, soc0=2.0)
+    sol = solve(inputs, BATTERY, grid, config(terminal_value=0.25))
+    assert sol.charge_kw[0:6].sum() > 4.0  # grid-charged despite the floor
+    assert sol.grid_import_kw[0:6].max() > 1.0

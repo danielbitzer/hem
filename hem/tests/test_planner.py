@@ -281,12 +281,19 @@ def test_hysteresis_keeps_near_degenerate_previous_action():
     """Step-0 buy price marginally below the terminal value makes a grid
     charge worth well under the threshold, so the previous action (idle:
     cheap import serves the load, battery waits) is kept."""
+    # pin the hold value so this isolates the hysteresis mechanism from the
+    # rebuy anchor (which would otherwise track buy[0] down and make the charge
+    # a wash — a separate behavior, covered in test_optimizer).
     settings = make_settings(
-        optimizer={"action_switch_threshold_dollars": 0.05, "forecast_haircut": 0.0}
+        optimizer={
+            "action_switch_threshold_dollars": 0.05,
+            "forecast_haircut": 0.0,
+            "terminal_soc_value": 0.245,
+        }
     )
     planner = offline_planner(settings)
     data = synthetic_cycle_data(settings)
-    data.inputs.buy[0] = 0.23  # terminal value is ~0.245: charging gains cents
+    data.inputs.buy[0] = 0.23  # just below the 0.245 hold value: charging gains cents
     planner.previous_plan = previous_plan_with(Action.IDLE)
     plan = planner.optimize(data, NOW)
     assert plan.intervals[0].action == Action.IDLE
@@ -295,7 +302,11 @@ def test_hysteresis_keeps_near_degenerate_previous_action():
 
 def test_hysteresis_disabled_switches_freely():
     settings = make_settings(
-        optimizer={"action_switch_threshold_dollars": 0.0, "forecast_haircut": 0.0}
+        optimizer={
+            "action_switch_threshold_dollars": 0.0,
+            "forecast_haircut": 0.0,
+            "terminal_soc_value": 0.245,
+        }
     )
     planner = offline_planner(settings)
     data = synthetic_cycle_data(settings)
@@ -347,44 +358,59 @@ def test_fallback_shifts_previous_plan():
     assert all(iv.end > NOW for iv in fallback.intervals)
 
 
-def test_daily_soc_target_vector_maps_local_hour_across_days():
+def test_daily_soc_target_vector_windowed_across_days():
     from hem.planner import daily_soc_target_vector
     from hem.timegrid import TimeGrid
 
-    # 00:00 UTC = 09:30 in Adelaide; 15:00 local = 05:30 UTC (+5.5h, index 11
-    # on a 30-min grid), and again next day at +29.5h (index 59).
+    # 00:00 UTC = 09:30 in Adelaide; 15:00 local = 05:30 UTC. soc[1:] alignment:
+    # the step whose END is 05:30 is index 10 (its end is soc[11]). A 0-hour
+    # hold keeps just that one step; the target repeats next day (+24h).
     now = datetime(2026, 7, 18, 0, 0, tzinfo=UTC)
     boundaries = [now + timedelta(minutes=30 * i) for i in range(80)]
     grid = TimeGrid.build(now, boundaries, timedelta(hours=36))
-    target = daily_soc_target_vector(
-        grid, ADELAIDE, target_soc=1.0, target_time=dt_time(15, 0), capacity_kwh=44.8
+    instant = daily_soc_target_vector(
+        grid, ADELAIDE, target_soc=1.0, target_time=dt_time(15, 0), hold_hours=0.0,
+        capacity_kwh=44.8,
     )
-    assert target is not None and len(target) == len(grid) + 1
-    hits = np.nonzero(target)[0]
-    assert list(hits) == [11, 59]
-    assert target[11] == pytest.approx(44.8)
+    assert instant is not None and len(instant) == len(grid)  # aligned with soc[1:]
+    assert instant[10] == pytest.approx(44.8)  # soc[11] == 05:30 UTC == 15:00 Adelaide
+    assert list(np.nonzero(instant)[0]) == [10, 58]  # today + tomorrow, one step each
 
-    # minutes resolution: 15:30 local is one 30-min step later than 15:00
-    half = daily_soc_target_vector(
-        grid, ADELAIDE, target_soc=1.0, target_time=dt_time(15, 30), capacity_kwh=44.8
+    # a 2-hour hold widens each day's floor to the step-ends in [15:00, 17:00]
+    windowed = daily_soc_target_vector(
+        grid, ADELAIDE, target_soc=1.0, target_time=dt_time(15, 0), hold_hours=2.0,
+        capacity_kwh=44.8,
     )
-    assert half is not None
-    assert list(np.nonzero(half)[0]) == [12, 60]
+    assert windowed is not None
+    assert list(np.nonzero(windowed)[0]) == [10, 11, 12, 13, 14, 58, 59, 60, 61, 62]
 
-    # target hour already past for today -> only tomorrow's instant remains
-    later = datetime(2026, 7, 18, 6, 0, tzinfo=UTC)  # 15:30 Adelaide
-    boundaries2 = [later + timedelta(minutes=30 * i) for i in range(80)]
-    grid2 = TimeGrid.build(later, boundaries2, timedelta(hours=36))
-    target2 = daily_soc_target_vector(
-        grid2, ADELAIDE, target_soc=1.0, target_time=dt_time(15, 0), capacity_kwh=44.8
+    # clamp to soc_max so an over-100% target can't bake in a phantom penalty
+    clamped = daily_soc_target_vector(
+        grid, ADELAIDE, target_soc=1.0, target_time=dt_time(15, 0), hold_hours=0.0,
+        capacity_kwh=44.8, soc_max_kwh=40.0,
     )
-    assert target2 is not None
-    assert len(np.nonzero(target2)[0]) == 1  # tomorrow only
+    assert clamped is not None and clamped[10] == pytest.approx(40.0)
+
+    # a window that has already fully elapsed for today must NOT pin step 0 —
+    # only tomorrow's window remains (regression: the arrival fallback used to
+    # trivially match step 0 for a past win_start, holding the battery full
+    # through the very evening peak it should discharge into).
+    later = datetime(2026, 7, 18, 12, 0, tzinfo=UTC)  # 21:30 Adelaide, past 15:00+4h
+    b2 = [later + timedelta(minutes=30 * i) for i in range(80)]
+    g2 = TimeGrid.build(later, b2, timedelta(hours=36))
+    elapsed = daily_soc_target_vector(
+        g2, ADELAIDE, target_soc=1.0, target_time=dt_time(15, 0), hold_hours=4.0,
+        capacity_kwh=44.8,
+    )
+    assert elapsed is not None
+    assert elapsed[0] == 0.0  # step 0 not pinned
+    assert np.count_nonzero(elapsed) == 9  # only tomorrow's 4h window (9 step-ends)
 
     # disabled
     assert (
         daily_soc_target_vector(
-            grid, ADELAIDE, target_soc=0.0, target_time=dt_time(15, 0), capacity_kwh=44.8
+            grid, ADELAIDE, target_soc=0.0, target_time=dt_time(15, 0), hold_hours=4.0,
+            capacity_kwh=44.8,
         )
         is None
     )
