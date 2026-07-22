@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **New guide: [OPTIMIZER.md](OPTIMIZER.md)** — a plain-language explanation
+  of how the optimizer decides (what it weighs, the hold value, when it
+  sells, the daily target and spike reserve), with worked examples, common
+  configuration pitfalls, a setup checklist for new systems, and a
+  which-knob-for-which-itch quick reference. Linked from DOCS.
+
 ## 0.8.0
 
 - **Time travel in Test mode**: pick a past moment and HEM replays the prices,
