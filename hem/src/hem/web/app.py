@@ -12,10 +12,12 @@ itself, acceptable for a household add-on (see DOCS).
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -23,10 +25,22 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from hem import __version__
-from hem.config import Settings
+from hem.config import EnvSettings, Settings
 from hem.config_store import ConfigController
+from hem.forecast.load import default_timezone
 from hem.ha.client import HaClient
 from hem.models import Plan
+from hem.simulate import SCENARIOS, SimOverrides, run_simulation, scenario_list
+
+
+def _opt_float(v: Any) -> float | None:
+    """Parse an optional numeric override; blank/None/invalid -> None (use saved)."""
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
 HEALTHY_WINDOW = timedelta(minutes=15)
 # Vite build output (hem/frontend -> `bun run build`); gitignored, built by CI
@@ -165,6 +179,53 @@ def create_app(
             except OSError as e:
                 return JSONResponse({"error": f"could not write the config file: {e}"}, 500)
             return JSONResponse({"ok": True, "config": settings.model_dump(mode="json")})
+
+        @app.get("/api/scenarios")
+        async def get_scenarios() -> JSONResponse:
+            return JSONResponse({"scenarios": scenario_list()})
+
+        @app.post("/api/simulate")
+        async def simulate(request: Request) -> JSONResponse:
+            """Run the optimizer against a synthetic price scenario (test mode).
+            Read-only: never publishes sensors or touches the live plan."""
+            current = controller.current
+            if current is None:
+                return JSONResponse({"error": "configure HEM first"}, status_code=409)
+            try:
+                body = await request.json()
+            except ValueError:
+                return JSONResponse({"error": "request body is not valid JSON"}, 400)
+            scenario = body.get("scenario")
+            if scenario not in SCENARIOS:
+                return JSONResponse({"error": f"unknown scenario: {scenario!r}"}, 400)
+            soc = _opt_float(body.get("soc_frac"))
+            ov = body.get("overrides") or {}
+            overrides = SimOverrides(
+                wear_cost_per_kwh=_opt_float(ov.get("wear_cost_per_kwh")),
+                hold_value_scaling=_opt_float(ov.get("hold_value_scaling")),
+                min_battery_export_spread=_opt_float(ov.get("min_battery_export_spread")),
+                min_battery_export_price=_opt_float(ov.get("min_battery_export_price")),
+                daily_target_soc=_opt_float(ov.get("daily_target_soc")),
+                daily_target_hold_hours=_opt_float(ov.get("daily_target_hold_hours")),
+                daily_target_penalty_per_kwh=_opt_float(ov.get("daily_target_penalty_per_kwh")),
+            )
+            try:
+                tz = default_timezone(EnvSettings().tz)
+            except Exception:  # noqa: BLE001 - a bad HEM_TZ shouldn't 500 the tool
+                tz = ZoneInfo("UTC")
+            try:
+                result = await asyncio.to_thread(
+                    run_simulation,
+                    current,
+                    scenario_id=scenario,
+                    soc_frac=soc if soc is not None else 0.5,
+                    now=datetime.now(UTC),
+                    tz=tz,
+                    overrides=overrides,
+                )
+            except Exception as e:  # noqa: BLE001 - report solver/setup failures to the UI
+                return JSONResponse({"error": f"simulation failed: {e}"}, status_code=500)
+            return JSONResponse(result)
 
     if client is not None:
 
