@@ -56,6 +56,11 @@ function buildDefaults(config: Record<string, unknown> | null): FormValues {
       // keeps default-vs-customized visually distinct after reloads).
       v = raw === undefined ? "" : String(raw);
       if (f.kind === "time") v = v.slice(0, 5); // pydantic dumps "15:00:00"
+      // Percent fields store fractions but display ×100 (spec defaults are
+      // already in display units). Round away float artifacts (0.07*100).
+      if (f.percent && typeof raw === "number") {
+        v = String(Math.round(raw * 100 * 1e6) / 1e6);
+      }
       if (f.default !== undefined && v === String(f.default)) v = "";
     }
     setPath(values, f.path, v);
@@ -75,7 +80,11 @@ function toDoc(values: FormValues): ConfigDoc {
     if (f.kind === "number") {
       // empty optional -> omit, the server default applies; non-numeric text
       // goes through as-is so the server's per-field error lands on the input
-      if (s !== "") setPath(doc, f.path, Number.isNaN(Number(s)) ? s : Number(s));
+      if (s !== "") {
+        const n = Number(s);
+        // percent fields display ×100; store the fraction the server expects
+        setPath(doc, f.path, Number.isNaN(n) ? s : f.percent ? n / 100 : n);
+      }
     } else if (f.kind === "text") {
       // terminal_soc_value: "auto" | number
       if (s !== "") setPath(doc, f.path, s !== "auto" && !Number.isNaN(Number(s)) ? Number(s) : s);
