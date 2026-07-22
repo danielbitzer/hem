@@ -29,7 +29,12 @@
     never-fires safety valve, and a timeout already falls back to the
     previous plan.
   - Wear cost help now matches the redesigned economics (realistic ~0.5–3c/kWh,
-    throughput-only) instead of suggesting a 16c-style estimate.
+    throughput-only, and it prices house-serving discharge too — use the export
+    spread for sell-selectivity) instead of suggesting a 16c-style estimate.
+  - Settings help no longer references specific battery brands/integrations —
+    sensors are described by function (battery-agnostic).
+  - Entity pickers show just the friendly name once selected; entity IDs
+    remain visible in the search results.
 
 ## 0.7.0
 

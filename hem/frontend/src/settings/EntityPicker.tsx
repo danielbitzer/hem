@@ -49,9 +49,9 @@ export function EntityPicker({ value, onChange, entities, domains, optional, inv
           className="h-auto w-full justify-between rounded-md bg-secondary px-[13px] py-[11px] text-[13px] font-normal"
         >
           {value ? (
-            <span className="truncate">
-              {selected ? `${selected.name} — ${selected.entity_id}` : value}
-            </span>
+            // Selected display: friendly name only — the id is visible in the
+            // dropdown; raw ids only show for unknown/typed entities.
+            <span className="truncate">{selected ? selected.name : value}</span>
           ) : (
             <span className="text-muted-foreground">{optional ? "not used" : "select…"}</span>
           )}
