@@ -155,16 +155,18 @@ export const SECTIONS: SectionSpec[] = [
         { unit: "kW", min: 0.1, step: 0.1, required: true },
       ),
       number("battery.efficiency_charge", "Charge efficiency", "AC→DC charge efficiency.", {
-        min: 0.5,
-        max: 1,
-        step: 0.01,
-        default: "0.95",
+        unit: "%",
+        percent: true,
+        min: 50,
+        max: 100,
+        step: 1,
+        default: "95",
       }),
       number(
         "battery.efficiency_discharge",
         "Discharge efficiency",
         "DC→AC discharge efficiency.",
-        { min: 0.5, max: 1, step: 0.01, default: "0.95" },
+        { unit: "%", percent: true, min: 50, max: 100, step: 1, default: "95" },
       ),
       number(
         "battery.soc_min",

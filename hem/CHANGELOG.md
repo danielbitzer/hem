@@ -16,9 +16,10 @@
   combines with the fixed penalty rather than replacing it — each solve uses
   whichever is higher.
 - Settings polish:
-  - Ratio settings (SoC min/max, daily full-charge target, load forecast
-    buffer, hold value scaling, forecast haircut) are now displayed and
-    edited as **percentages** in the UI (stored values unchanged).
+  - Ratio settings (SoC min/max, charge/discharge efficiency, daily
+    full-charge target, load forecast buffer, hold value scaling, forecast
+    haircut) are now displayed and edited as **percentages** in the UI
+    (stored values unchanged).
   - **Forecast haircut now defaults to off** and is renamed "Sell price
     forecast haircut": Amber's advanced predicted pricing already tempers
     over-forecast spikes, so a second haircut double-discounted them. Set it
