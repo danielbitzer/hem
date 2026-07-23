@@ -6,7 +6,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { type ConfigResponse, putConfig } from "@/api";
+import { type ConfigResponse, ConfigValidationError, putConfig } from "@/api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,7 +20,10 @@ import {
   buildDefaults,
   FieldRow,
   type FormValues,
+  mapServerErrors,
+  NO_SANDBOX_ERRORS,
   SANDBOX_SECTION_IDS,
+  type SandboxErrors,
   sandboxDoc,
 } from "./form";
 import { getPath, SECTIONS, setPath } from "./spec";
@@ -39,9 +42,9 @@ export function SandboxPanel({
 }: {
   values: FormValues;
   onChange: (v: FormValues) => void;
-  /** Per-field validation errors from the last simulate call (422). */
-  errors: Record<string, string>;
-  onErrors: (e: Record<string, string>) => void;
+  /** Validation errors from the last simulate or apply call (422). */
+  errors: SandboxErrors;
+  onErrors: (e: SandboxErrors) => void;
   liveConfig: Record<string, unknown> | null;
   /** Sandbox differs from a fresh copy of the live config (computed in App —
    * it disables Reset/Apply when there is nothing to reset or apply). */
@@ -58,15 +61,26 @@ export function SandboxPanel({
       if (!live) throw new Error("live config unavailable");
       // The full live document with only the sandbox sections replaced —
       // entities, vacation, enabled etc. stay exactly as saved.
-      await putConfig({ ...live, ...sandboxDoc(values) });
+      await putConfig({ ...live, ...sandboxDoc(values, live) });
     },
     onSuccess: () => {
       setApplied(true);
       setApplyError("");
+      onErrors(NO_SANDBOX_ERRORS);
       void queryClient.invalidateQueries({ queryKey: ["config"] });
       void refetchPlanUntilFresh(queryClient);
     },
-    onError: (e) => setApplyError(String(e)),
+    onError: (e) => {
+      if (e instanceof ConfigValidationError) {
+        // Same field/general mapping the live settings form uses, so the
+        // rejected inputs light up instead of a bare "invalid" banner.
+        const { byField, general } = mapServerErrors(e.fieldErrors);
+        onErrors({ fields: byField, general });
+        setApplyError("Not applied — fix the errors above.");
+      } else {
+        setApplyError(String(e));
+      }
+    },
   });
 
   const edit = (path: string, v: string | boolean) => {
@@ -74,9 +88,9 @@ export function SandboxPanel({
     setPath(next, path, v);
     onChange(next);
     setApplied(false);
-    if (path in errors) {
-      const { [path]: _dropped, ...rest } = errors;
-      onErrors(rest);
+    if (path in errors.fields) {
+      const { [path]: _dropped, ...fields } = errors.fields;
+      onErrors({ ...errors, fields });
     }
   };
 
@@ -96,7 +110,7 @@ export function SandboxPanel({
                   spec={spec}
                   value={getPath(values, spec.path) as string | boolean}
                   onChange={(v) => edit(spec.path, v)}
-                  error={errors[spec.path]}
+                  error={errors.fields[spec.path]}
                   entities={[]}
                 />
               ))}
@@ -105,9 +119,12 @@ export function SandboxPanel({
         </Card>
       ))}
 
-      {applyError && (
+      {(errors.general.length > 0 || applyError) && (
         <div className="border-destructive text-destructive rounded-xl border px-4 py-3 text-sm">
-          {applyError}
+          {errors.general.map((msg) => (
+            <div key={msg}>{msg}</div>
+          ))}
+          {applyError && <div>{applyError}</div>}
         </div>
       )}
 
@@ -140,7 +157,7 @@ export function SandboxPanel({
               disabled={!dirty}
               onClick={() => {
                 if (liveConfig) onChange(buildDefaults(liveConfig));
-                onErrors({});
+                onErrors(NO_SANDBOX_ERRORS);
                 setApplied(false);
                 setApplyError("");
               }}

@@ -19,7 +19,11 @@ import {
   SelectValue,
 } from "./components/ui/select";
 import { PlanView } from "./PlanView";
-import { mapServerErrors } from "./settings/form";
+import {
+  mapServerErrors,
+  NO_SANDBOX_ERRORS,
+  type SandboxErrors,
+} from "./settings/form";
 
 /** Yesterday at this time, as a datetime-local value (browser-local). */
 function defaultAt(): string {
@@ -74,8 +78,8 @@ export function TestView({
    * live config has loaded). */
   sandbox: SandboxConfig | null;
   sandboxDirty: boolean;
-  /** Simulate rejected the sandbox config — per-field errors for the panel. */
-  onSandboxErrors: (byField: Record<string, string>) => void;
+  /** Simulate rejected the sandbox config — errors for the settings panel. */
+  onSandboxErrors: (errors: SandboxErrors) => void;
 }) {
   const scenarios = useQuery({ queryKey: ["scenarios"], queryFn: fetchScenarios });
   const [mode, setMode] = useState<Mode>("scenario");
@@ -97,9 +101,11 @@ export function TestView({
             soc_frac: recordedSoc ? null : socPct / 100,
             config: sandbox ?? undefined,
           }),
+    onSuccess: () => onSandboxErrors(NO_SANDBOX_ERRORS),
     onError: (e) => {
       if (e instanceof ConfigValidationError) {
-        onSandboxErrors(mapServerErrors(e.fieldErrors).byField);
+        const { byField, general } = mapServerErrors(e.fieldErrors);
+        onSandboxErrors({ fields: byField, general });
       }
     },
   });
@@ -109,7 +115,7 @@ export function TestView({
   const notes = sim.data?.meta.notes ?? [];
   const simError =
     sim.error instanceof ConfigValidationError
-      ? "The test settings are invalid — fix the highlighted fields in the settings panel."
+      ? "The test settings are invalid — see the errors in the settings panel."
       : sim.error
         ? String(sim.error)
         : "";

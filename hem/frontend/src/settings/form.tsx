@@ -26,10 +26,23 @@ export type FormValues = Record<string, unknown>;
  * always comes from the live config. Mirrors SANDBOX_SECTIONS in web/app.py. */
 export const SANDBOX_SECTION_IDS = ["battery", "grid", "optimizer", "spike"] as const;
 
+/** Validation errors for the sandbox: per-field (attached to inputs) plus
+ * general ones (cross-field model validators report a section loc, e.g.
+ * "battery: soc_min must be < soc_max" — no single input to attach to). */
+export interface SandboxErrors {
+  fields: Record<string, string>;
+  general: string[];
+}
+export const NO_SANDBOX_ERRORS: SandboxErrors = { fields: {}, general: [] };
+
 export function buildDefaults(config: Record<string, unknown> | null): FormValues {
   const values: FormValues = { enabled: config?.enabled === true };
   for (const f of ALL_FIELDS) {
-    const raw = config ? getPath(config, f.path) : undefined;
+    const stored = config ? getPath(config, f.path) : undefined;
+    // model_dump serializes unset optionals (e.g. grid.min_battery_export_price)
+    // as JSON null — treat exactly like absent, or String(null) would put the
+    // literal text "null" in the form and every save/simulate would 422.
+    const raw = stored === null ? undefined : stored;
     let v: string | boolean;
     if (f.kind === "boolean") {
       v = raw === undefined ? f.default === true : raw === true;
@@ -84,12 +97,28 @@ export function toDoc(values: FormValues): Record<string, unknown> {
 }
 
 /** The sandbox sections of a form-values object, in config-doc shape — what
- * test mode sends as the simulation's "config". */
-export function sandboxDoc(values: FormValues): SandboxConfig {
+ * test mode sends as the simulation's "config" and Apply-to-live PUTs.
+ *
+ * Every section is always emitted (the server replaces a section only when
+ * present — an all-default section must still replace the live one, or the
+ * form would show defaults while the sim ran with live values). Each section
+ * starts from the live section minus every spec'd field, so config-file-only
+ * keys (e.g. optimizer.solver_timeout_s) survive both simulation and apply;
+ * spec'd fields follow the form exactly (empty input → absent → server
+ * default). */
+export function sandboxDoc(
+  values: FormValues,
+  liveConfig: Record<string, unknown> | null,
+): SandboxConfig {
   const doc = toDoc(values);
   const out: SandboxConfig = {};
   for (const id of SANDBOX_SECTION_IDS) {
-    if (doc[id] !== undefined) out[id] = doc[id];
+    const base = { ...((liveConfig?.[id] as Record<string, unknown> | undefined) ?? {}) };
+    for (const f of ALL_FIELDS) {
+      const [section, key] = f.path.split(".");
+      if (section === id && key) delete base[key];
+    }
+    out[id] = { ...base, ...((doc[id] as Record<string, unknown> | undefined) ?? {}) };
   }
   return out;
 }

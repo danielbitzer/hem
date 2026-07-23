@@ -112,6 +112,18 @@ def test_api_simulate_accepts_sandbox_config(tmp_path):
     assert body["meta"]["capacity_kwh"] == 20.0  # sandbox section took effect
 
 
+def test_api_simulate_empty_sandbox_section_means_defaults_not_live(tmp_path):
+    # The frontend always sends all four sections; an empty one must REPLACE
+    # the live section (pydantic defaults), not silently keep live values.
+    settings = make_settings(optimizer={"import_penalty_per_kwh": 0.05})
+    client = TestClient(create_app(AppState(), _controller(tmp_path, settings)))
+    resp = client.post(
+        "/api/simulate", json={"scenario": "typical", "config": {"optimizer": {}}}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["solver_status"].startswith("optimal")
+
+
 def test_api_simulate_invalid_sandbox_config_is_422_with_field_errors(tmp_path):
     client = TestClient(create_app(AppState(), _controller(tmp_path, make_settings())))
     resp = client.post(

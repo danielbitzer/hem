@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 import { type ConfigResponse, fetchConfig, fetchPlanOrExplain, type PlanResponse } from "./api";
 import { installIosScrollKick } from "./iosScrollKick";
 import { PlanView } from "./PlanView";
-import { buildDefaults, type FormValues, sandboxDoc } from "./settings/form";
+import {
+  buildDefaults,
+  type FormValues,
+  NO_SANDBOX_ERRORS,
+  type SandboxErrors,
+  sandboxDoc,
+} from "./settings/form";
 import { SandboxPanel } from "./settings/SandboxPanel";
 import { SettingsView } from "./settings/SettingsView";
 import { TestView } from "./TestView";
@@ -67,17 +73,17 @@ export function App() {
   // created lazily from the live config on first entry into Test.
   const liveConfig = config.data?.config ?? null;
   const [sandboxValues, setSandboxValues] = useState<FormValues | null>(null);
-  const [sandboxErrors, setSandboxErrors] = useState<Record<string, string>>({});
+  const [sandboxErrors, setSandboxErrors] = useState<SandboxErrors>(NO_SANDBOX_ERRORS);
   useEffect(() => {
     if (mode === "test" && sandboxValues === null && liveConfig) {
       setSandboxValues(buildDefaults(liveConfig));
     }
   }, [mode, sandboxValues, liveConfig]);
-  const sandbox = sandboxValues ? sandboxDoc(sandboxValues) : null;
+  const sandbox = sandboxValues && liveConfig ? sandboxDoc(sandboxValues, liveConfig) : null;
   const sandboxDirty =
     sandbox !== null &&
     liveConfig !== null &&
-    JSON.stringify(sandbox) !== JSON.stringify(sandboxDoc(buildDefaults(liveConfig)));
+    JSON.stringify(sandbox) !== JSON.stringify(sandboxDoc(buildDefaults(liveConfig), liveConfig));
 
   // Content columns are CSS-hidden rather than unmounted so a mode flip
   // never throws away simulation results or dashboard state.
@@ -142,9 +148,12 @@ export function App() {
           <TestView
             sandbox={sandbox}
             sandboxDirty={sandboxDirty}
-            onSandboxErrors={(byField) => {
-              setSandboxErrors(byField);
-              setOpenChosen(true); // surface the panel the errors point at
+            onSandboxErrors={(errors) => {
+              setSandboxErrors(errors);
+              // surface the panel the errors point at
+              if (errors.general.length || Object.keys(errors.fields).length) {
+                setOpenChosen(true);
+              }
             }}
           />
         </div>
