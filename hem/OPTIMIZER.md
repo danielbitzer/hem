@@ -156,6 +156,19 @@ HEM will take it. If shuffling ~40 kWh through your battery for a dollar or
 two sounds silly, that's not the optimizer being wrong — it's the spread
 knob waiting to be told your time has value.
 
+## Import reluctance (optional)
+
+The optimizer treats forecast prices as certain: a predicted 26c sell
+tonight justifies a certain 20c import now, at any positive margin. If
+you're warier than that — forecasts change, the import is real money — the
+**import reluctance** setting (default 0 = off) adds a virtual toll to every
+imported kWh *in the planning maths only* (the dashboard's dollar figures
+stay real). Import-dependent bets then need bigger margins, and the plan
+leans toward solar and stored energy. Genuine spikes clear any sensible
+toll, and it's skipped when the buy price is negative — getting paid to
+charge stays attractive. Side effect: grid top-ups toward the daily target
+pay the toll too, so you may need a slightly higher target penalty.
+
 ## The daily full-charge target
 
 Left to pure economics, the optimizer charges the battery *just enough* for
@@ -276,6 +289,7 @@ make it a great time to fill the battery.
 | try harder to actually reach that target | Daily target penalty / price multiple |
 | cycle less overall | Wear cost — but keep it honest (0.5–3c); see pitfalls |
 | never charge the battery from the grid | Allow grid charging (turn it off) |
+| prefer solar/stored energy over importing | Import reluctance |
 | hold charge more / trade more | Hold value scaling |
 | stop chasing forecast spikes it can't trust | Sell price forecast haircut |
 | keep something in the tank for possible spikes | Spike reserve settings |
