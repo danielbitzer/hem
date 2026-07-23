@@ -63,8 +63,9 @@ Physical parameters of your battery. `wear_cost_per_kwh` is the degradation cost
 against every discharged kWh in the objective. It is a *throughput* cost only — it never
 lowers the value of stored energy (see the hold value under `optimizer`), so raising it
 makes the battery cycle **less**, as you'd expect. A reasonable value is replacement cost
-÷ lifetime throughput; realistic lithium is **~0.5–3c/kWh** (e.g. $6000 / 38 MWh ≈ 1.6c,
-and a Sungrow warranty implies a ~0.4c floor). Much above ~4c is usually too high and
+÷ lifetime throughput; realistic lithium is **~0.5–3c/kWh** (e.g. a $6,000 battery
+good for 300,000 kWh of lifetime throughput — 50 kWh usable × 6,000 cycles — is 2c/kWh;
+battery warranties often imply well under 1c). Much above ~4c is usually too high and
 will suppress genuine arbitrage.
 
 Note that "every discharged kWh" **includes serving your own house**: the battery only
@@ -191,6 +192,11 @@ battery lower than you'd like — **raise `battery.soc_min`** to keep a comfort
 buffer until learning is active. The goal state is always a learned forecast.
 
 ### `optimizer`
+
+> **New to how the optimizer thinks?** [OPTIMIZER.md](OPTIMIZER.md) explains
+> the whole decision model in plain language — what it weighs, the hold
+> value, when it sells, worked examples, and the common configuration
+> pitfalls. Recommended before tuning anything below.
 
 - `horizon_hours` (36) — how far ahead each plan looks. Longer sees more of
   tomorrow's solar; beyond the price forecast the tail is padded (shaded on
