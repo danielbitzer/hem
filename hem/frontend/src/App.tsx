@@ -90,8 +90,10 @@ export function App() {
   // never throws away simulation results or dashboard state — and each column
   // is its own scroll container, so dashboard, test results and settings all
   // keep independent scroll positions.
+  // overflow-x-hidden matters: setting overflow-y alone would compute
+  // overflow-x to auto, so any 1px-too-wide child adds a sideways scroll.
   const contentCls = (m: AppMode) =>
-    "min-w-0 max-w-[960px] flex-1 flex-col gap-3.5 overflow-y-auto py-5 " +
+    "min-w-0 max-w-[960px] flex-1 flex-col gap-3.5 overflow-x-hidden overflow-y-auto py-5 " +
     (mode !== m ? "hidden" : settingsOpen ? "hidden lg:flex" : "flex");
   const containerCls = settingsOpen ? "max-w-[1460px]" : "max-w-[960px]";
 
@@ -164,7 +166,7 @@ export function App() {
         </div>
         {settingsOpen && (
           <aside
-            className="flex w-full min-w-0 flex-col gap-3 overflow-y-auto py-5 lg:w-[430px] lg:shrink-0"
+            className="flex w-full min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto py-5 lg:w-[430px] lg:shrink-0"
             data-scrollkick=""
           >
             {mode === "live" ? (

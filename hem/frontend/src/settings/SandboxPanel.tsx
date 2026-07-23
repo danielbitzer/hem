@@ -212,7 +212,7 @@ export function SandboxPanel({
         </div>
       )}
 
-      <div className="bg-background/95 sticky bottom-0 -mx-1 border-t px-1 py-3 backdrop-blur">
+      <div className="bg-background/95 sticky bottom-0 border-t py-3 backdrop-blur">
         {confirming ? (
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm">Overwrite the live settings with these sections?</span>

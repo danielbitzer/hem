@@ -207,7 +207,7 @@ function SettingsForm({ initialConfig }: { initialConfig: Record<string, unknown
         </div>
       )}
 
-      <div className="bg-background/95 sticky bottom-0 -mx-1 flex items-center gap-3 border-t px-1 py-3 backdrop-blur">
+      <div className="bg-background/95 sticky bottom-0 flex items-center gap-3 border-t py-3 backdrop-blur">
         <form.Subscribe selector={(s) => s.isSubmitting}>
           {(isSubmitting) => (
             <Button type="submit" disabled={isSubmitting}>
