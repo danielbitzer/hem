@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardAction,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -27,8 +26,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { refetchPlanUntilFresh } from "@/planRefresh";
 import { setThemePref, type ThemePref, useThemePref } from "@/theme";
-import { buildDefaults, FieldRow, mapServerErrors, toDoc } from "./form";
-import { SECTIONS } from "./spec";
+import { buildDefaults, CollapsibleCard, FieldRow, mapServerErrors, toDoc } from "./form";
+import { getPath, SECTIONS } from "./spec";
 import { VacationCard } from "./VacationCard";
 
 export function SettingsView() {
@@ -46,6 +45,21 @@ function SettingsForm({ initialConfig }: { initialConfig: Record<string, unknown
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [generalErrors, setGeneralErrors] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
+  // Section cards start collapsed on a configured install (compact overview)
+  // and open on a fresh one (guided setup — every field needs a look).
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
+    initialConfig === null ? Object.fromEntries(SECTIONS.map((s) => [s.id, true])) : {},
+  );
+  const openSectionsFor = (paths: Iterable<string>) => {
+    const ids = new Set([...paths].map((p) => p.split(".")[0] ?? ""));
+    if (ids.size) {
+      setOpenSections((prev) => {
+        const next = { ...prev };
+        for (const id of ids) next[id] = true;
+        return next;
+      });
+    }
+  };
 
   const save = useMutation({
     mutationFn: putConfig,
@@ -62,6 +76,7 @@ function SettingsForm({ initialConfig }: { initialConfig: Record<string, unknown
         const { byField, general } = mapServerErrors(e.fieldErrors);
         setServerErrors(byField);
         setGeneralErrors(general);
+        openSectionsFor(Object.keys(byField)); // an error must never hide in a collapsed card
       } else {
         setGeneralErrors([String(e)]);
       }
@@ -95,6 +110,15 @@ function SettingsForm({ initialConfig }: { initialConfig: Record<string, unknown
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
+        // Client-side "Required" errors render inside the cards — open any
+        // section that is about to fail so the message is actually visible.
+        openSectionsFor(
+          SECTIONS.flatMap((s) => s.fields)
+            .filter(
+              (f) => f.required && String(getPath(form.state.values, f.path) ?? "").trim() === "",
+            )
+            .map((f) => f.path),
+        );
         void form.handleSubmit();
       }}
     >
@@ -123,19 +147,24 @@ function SettingsForm({ initialConfig }: { initialConfig: Record<string, unknown
       <VacationCard />
 
       {SECTIONS.map((section) => (
-        <Card key={section.id}>
-          <CardHeader>
-            <CardTitle>{section.title}</CardTitle>
-            <CardDescription>{section.description}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {section.id === "entities" && entities.isError && (
-              <p className="text-destructive mb-2 text-xs">
-                Entity list unavailable ({String(entities.error)}) — type entity IDs manually.
-              </p>
-            )}
-            <div className="divide-y">
-              {section.fields.map((spec) => (
+        <CollapsibleCard
+          key={section.id}
+          title={section.title}
+          description={section.description}
+          open={openSections[section.id] === true}
+          onToggle={() =>
+            setOpenSections((prev) => ({ ...prev, [section.id]: prev[section.id] !== true }))
+          }
+        >
+          {section.id === "entities" && entities.isError && (
+            <p className="text-destructive mb-2 text-xs">
+              Entity list unavailable ({String(entities.error)}) — type entity IDs manually.
+            </p>
+          )}
+          <div className="divide-y">
+            {section.fields
+              .filter((spec) => !spec.testOnly)
+              .map((spec) => (
                 <form.Field
                   key={spec.path}
                   name={spec.path}
@@ -164,9 +193,8 @@ function SettingsForm({ initialConfig }: { initialConfig: Record<string, unknown
                   )}
                 </form.Field>
               ))}
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </CollapsibleCard>
       ))}
 
       <AppearanceCard />

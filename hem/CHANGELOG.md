@@ -17,6 +17,18 @@
   (the simulate API takes whole config sections instead of ad-hoc overrides,
   and the daily-target price multiple now applies in simulations exactly as it
   does live).
+- Settings polish for the new panel: fields are a single stacked column
+  everywhere (label and unit above the control); section cards collapse
+  behind their headers (open by default on a fresh install, and any section
+  holding a validation error opens itself so a message can never hide);
+  the settings panel and the main view scroll independently, keeping the
+  Save/Apply bar always in reach; and the dashboard greys out with a
+  "Re-planning…" pill while a save waits for the optimizer's re-solve.
+- `entities.pv_power` (the actual-PV sensor time travel replays solar from)
+  moved out of the live Entities section into Test mode ("Time travel data"
+  in the test settings panel) — it only affects simulations. Choosing a
+  sensor there saves to the live settings immediately, since simulations
+  always read entities from the live config.
 - **Import reluctance** (`optimizer.import_penalty_per_kwh`, default 0 = off):
   a virtual per-kWh toll on grid imports in the planning maths (never in
   displayed costs) that biases the plan toward solar and stored energy —

@@ -3,6 +3,7 @@ import { ArrowLeft, FlaskConical, Settings as SettingsIcon } from "lucide-react"
 import { useEffect, useState } from "react";
 import { type ConfigResponse, fetchConfig, fetchPlanOrExplain, type PlanResponse } from "./api";
 import { installIosScrollKick } from "./iosScrollKick";
+import { PLAN_REFRESHING_KEY } from "./planRefresh";
 import { PlanView } from "./PlanView";
 import {
   buildDefaults,
@@ -86,16 +87,18 @@ export function App() {
     JSON.stringify(sandbox) !== JSON.stringify(sandboxDoc(buildDefaults(liveConfig), liveConfig));
 
   // Content columns are CSS-hidden rather than unmounted so a mode flip
-  // never throws away simulation results or dashboard state.
+  // never throws away simulation results or dashboard state — and each column
+  // is its own scroll container, so dashboard, test results and settings all
+  // keep independent scroll positions.
   const contentCls = (m: AppMode) =>
-    "min-w-0 max-w-[960px] flex-1 flex-col gap-3.5 " +
+    "min-w-0 max-w-[960px] flex-1 flex-col gap-3.5 overflow-y-auto py-5 " +
     (mode !== m ? "hidden" : settingsOpen ? "hidden lg:flex" : "flex");
   const containerCls = settingsOpen ? "max-w-[1460px]" : "max-w-[960px]";
 
   return (
-    <div className="min-h-screen">
+    <div className="flex h-dvh flex-col">
       {/* Full-bleed header bar; its content aligns with the capped main column */}
-      <header className="border-b border-border bg-card px-[22px] py-[18px]">
+      <header className="shrink-0 border-b border-border bg-card px-[22px] py-[18px]">
         <div
           className={`mx-auto flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2.5 ${containerCls}`}
         >
@@ -140,11 +143,13 @@ export function App() {
           </div>
         </div>
       </header>
-      <main className={`mx-auto flex w-full items-start justify-center gap-5 p-5 ${containerCls}`}>
-        <div className={contentCls("live")}>
+      <main
+        className={`mx-auto flex min-h-0 w-full flex-1 items-stretch justify-center gap-5 px-5 ${containerCls}`}
+      >
+        <div className={contentCls("live")} data-scrollkick="">
           <Dashboard config={config.data} plan={plan.data} />
         </div>
-        <div className={contentCls("test")}>
+        <div className={contentCls("test")} data-scrollkick="">
           <TestView
             sandbox={sandbox}
             sandboxDirty={sandboxDirty}
@@ -158,7 +163,10 @@ export function App() {
           />
         </div>
         {settingsOpen && (
-          <aside className="flex w-full min-w-0 flex-col gap-3 lg:w-[430px] lg:shrink-0">
+          <aside
+            className="flex w-full min-w-0 flex-col gap-3 overflow-y-auto py-5 lg:w-[430px] lg:shrink-0"
+            data-scrollkick=""
+          >
             {mode === "live" ? (
               <>
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3 px-1">
@@ -306,6 +314,16 @@ function Dashboard({
   config: ConfigResponse | undefined;
   plan: PlanResponse | undefined;
 }) {
+  // True while a config save waits for the planner's re-solve: the plan on
+  // screen is the pre-save one, so grey it out rather than let it read as
+  // current (see refetchPlanUntilFresh).
+  const replanning =
+    useQuery({
+      queryKey: PLAN_REFRESHING_KEY,
+      queryFn: () => false,
+      enabled: false,
+      initialData: false,
+    }).data === true;
   const banner = lifecycleBanner(config);
   if (!plan) {
     return (
@@ -316,12 +334,27 @@ function Dashboard({
     );
   }
   return (
-    <>
+    <div
+      aria-busy={replanning}
+      className={
+        "flex flex-col gap-3.5 transition-opacity duration-300 " +
+        (replanning ? "pointer-events-none opacity-40" : "")
+      }
+    >
+      {replanning && (
+        // Sticks to the top of the dashboard's scroll container so the state
+        // is visible wherever the user has scrolled to.
+        <div className="pointer-events-none sticky top-1 z-10 -mb-11 flex justify-center">
+          <span className="rounded-full bg-foreground/80 px-3.5 py-1.5 text-xs font-semibold text-background shadow-md">
+            Re-planning…
+          </span>
+        </div>
+      )}
       {banner && <Banner text={banner} />}
       {vacationBanner(plan) && <Banner text={vacationBanner(plan) as string} />}
       {warningText(plan) && <Banner text={warningText(plan) as string} />}
       <PlanView plan={plan} info={loadForecastLine(plan)} />
-    </>
+    </div>
   );
 }
 

@@ -4,20 +4,20 @@
 // request — until the user explicitly promotes them with "Apply to live".
 // State lives in App (not here) so it survives panel toggles and mode switches.
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { type ConfigResponse, ConfigValidationError, putConfig } from "@/api";
-import { Button } from "@/components/ui/button";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  type ConfigResponse,
+  ConfigValidationError,
+  fetchConfig,
+  fetchEntities,
+  putConfig,
+} from "@/api";
+import { Button } from "@/components/ui/button";
 import { refetchPlanUntilFresh } from "@/planRefresh";
 import {
   buildDefaults,
+  CollapsibleCard,
   FieldRow,
   type FormValues,
   mapServerErrors,
@@ -26,11 +26,76 @@ import {
   type SandboxErrors,
   sandboxDoc,
 } from "./form";
-import { getPath, SECTIONS, setPath } from "./spec";
+import { ALL_FIELDS, getPath, SECTIONS, setPath } from "./spec";
 
 const SANDBOX_SECTIONS = SECTIONS.filter((s) =>
   (SANDBOX_SECTION_IDS as readonly string[]).includes(s.id),
 );
+
+/** Test-only entity settings (spec `testOnly`), shown here instead of the
+ * live Entities section. NOT part of the sandbox: simulations always read
+ * entities from the live config, so edits save to live immediately. */
+function TimeTravelCard() {
+  const queryClient = useQueryClient();
+  const entities = useQuery({ queryKey: ["entities"], queryFn: fetchEntities, retry: 1 });
+  const config = useQuery({ queryKey: ["config"], queryFn: fetchConfig });
+  const [open, setOpen] = useState(false);
+  // Optimistic display while the save round-trips (the config refetch is
+  // what makes the new value stick).
+  const [pending, setPending] = useState<Record<string, string>>({});
+
+  const save = useMutation({
+    mutationFn: async ({ path, value }: { path: string; value: string }) => {
+      const live = queryClient.getQueryData<ConfigResponse>(["config"])?.config;
+      if (!live) throw new Error("live config unavailable");
+      const doc = structuredClone(live) as Record<string, unknown>;
+      setPath(doc, path, value);
+      await putConfig(doc);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["config"] });
+      setPending({});
+    },
+    onError: () => setPending({}),
+  });
+
+  const liveConfig = config.data?.config ?? null;
+  const fields = ALL_FIELDS.filter((f) => f.testOnly);
+  if (fields.length === 0) return null;
+
+  return (
+    <CollapsibleCard
+      title="Time travel data"
+      description={
+        "Where historical replays get their real data. Unlike the sandbox " +
+        "sections above, choosing a sensor here saves to your live settings " +
+        "immediately."
+      }
+      open={open}
+      onToggle={() => setOpen((v) => !v)}
+    >
+      <div className="divide-y">
+        {fields.map((spec) => (
+          <FieldRow
+            key={spec.path}
+            spec={spec}
+            value={pending[spec.path] ?? String(getPath(liveConfig, spec.path) ?? "")}
+            onChange={(v) => {
+              setPending((prev) => ({ ...prev, [spec.path]: String(v) }));
+              save.mutate({ path: spec.path, value: String(v) });
+            }}
+            error={save.isError ? String(save.error) : undefined}
+            entities={entities.data ?? []}
+          />
+        ))}
+      </div>
+      {save.isPending && <p className="text-muted-foreground text-xs">Saving…</p>}
+      {save.isSuccess && !save.isPending && (
+        <p className="text-muted-foreground text-xs">Saved to live settings.</p>
+      )}
+    </CollapsibleCard>
+  );
+}
 
 export function SandboxPanel({
   values,
@@ -54,6 +119,21 @@ export function SandboxPanel({
   const [confirming, setConfirming] = useState(false);
   const [applied, setApplied] = useState(false);
   const [applyError, setApplyError] = useState("");
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  // Errors must never hide behind a collapsed card: whenever field errors
+  // land (from a simulate or apply 422), open the sections holding them.
+  const erroredSections = Object.keys(errors.fields)
+    .map((p) => p.split(".")[0] ?? "")
+    .sort()
+    .join(",");
+  useEffect(() => {
+    if (!erroredSections) return;
+    setOpenSections((prev) => {
+      const next = { ...prev };
+      for (const id of erroredSections.split(",")) next[id] = true;
+      return next;
+    });
+  }, [erroredSections]);
 
   const apply = useMutation({
     mutationFn: async () => {
@@ -97,27 +177,31 @@ export function SandboxPanel({
   return (
     <div className="space-y-4">
       {SANDBOX_SECTIONS.map((section) => (
-        <Card key={section.id}>
-          <CardHeader>
-            <CardTitle>{section.title}</CardTitle>
-            <CardDescription>{section.description}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="divide-y">
-              {section.fields.map((spec) => (
-                <FieldRow
-                  key={spec.path}
-                  spec={spec}
-                  value={getPath(values, spec.path) as string | boolean}
-                  onChange={(v) => edit(spec.path, v)}
-                  error={errors.fields[spec.path]}
-                  entities={[]}
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <CollapsibleCard
+          key={section.id}
+          title={section.title}
+          description={section.description}
+          open={openSections[section.id] === true}
+          onToggle={() =>
+            setOpenSections((prev) => ({ ...prev, [section.id]: prev[section.id] !== true }))
+          }
+        >
+          <div className="divide-y">
+            {section.fields.map((spec) => (
+              <FieldRow
+                key={spec.path}
+                spec={spec}
+                value={getPath(values, spec.path) as string | boolean}
+                onChange={(v) => edit(spec.path, v)}
+                error={errors.fields[spec.path]}
+                entities={[]}
+              />
+            ))}
+          </div>
+        </CollapsibleCard>
       ))}
+
+      <TimeTravelCard />
 
       {(errors.general.length > 0 || applyError) && (
         <div className="border-destructive text-destructive rounded-xl border px-4 py-3 text-sm">

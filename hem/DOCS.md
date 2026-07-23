@@ -53,9 +53,11 @@ the price sensors themselves, so the two price entities are all HEM needs for
 both live prices and forecasts.
 
 `pv_power` (optional) is your **actual** PV generation power sensor (W or kW,
-e.g. the mkaiser package's `total_dc_power`) — distinct from the
-`pv_forecast_*` forecast sensors. It feeds Test mode's time travel, which
-replays real recorded solar; without it, historical replays assume zero PV.
+e.g. your inverter's total DC power) — distinct from the `pv_forecast_*`
+forecast sensors. It feeds Test mode's time travel, which replays real
+recorded solar; without it, historical replays assume zero PV. Because it only
+matters to Test mode, the UI shows it there ("Time travel data" in the test
+settings panel) rather than in the live Entities section.
 
 ### `battery`
 
@@ -323,7 +325,9 @@ Test mode runs the optimizer against data of your choosing, in two ways:
   forecast HEM saw at the time, so it shows how your settings value the real
   day, not a re-run of the historical decision. Reach is limited by HA's
   recorder retention (~10 days by default), and real solar needs the optional
-  `entities.pv_power` sensor.
+  `entities.pv_power` sensor — set under "Time travel data" in the test
+  settings panel (it saves to your live settings; simulations always read
+  entities from the live config).
 
 In Test mode the gear opens **test settings**: a sandbox copy of the live
 config's battery, grid, optimizer and spike sections. Every simulation uses

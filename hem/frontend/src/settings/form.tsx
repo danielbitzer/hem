@@ -3,7 +3,17 @@
 // per-field row renderer. The two forms differ in chrome and lifecycle (save
 // vs simulate) but must agree exactly on field semantics.
 
+import { ChevronDown } from "lucide-react";
+import type { ReactNode } from "react";
 import type { Entity, FieldError, SandboxConfig } from "@/api";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -140,6 +150,9 @@ export function mapServerErrors(errors: FieldError[]): {
   return { byField, general };
 }
 
+/** One field, stacked single-column: label (with unit) above the control,
+ * error and help below — the same at every screen size. Switches are the
+ * one exception: label left, switch right on a single row. */
 export function FieldRow({
   spec,
   value,
@@ -153,16 +166,30 @@ export function FieldRow({
   error: string | undefined;
   entities: Entity[];
 }) {
+  const label = (
+    <Label className="leading-snug">
+      {spec.label}
+      {spec.required && <span className="text-destructive"> *</span>}
+      {spec.unit && <span className="text-muted-foreground font-normal"> ({spec.unit})</span>}
+    </Label>
+  );
+  if (spec.kind === "boolean") {
+    return (
+      <div className="space-y-1 py-3">
+        <div className="flex items-center justify-between gap-4">
+          {label}
+          <Switch checked={value === true} onCheckedChange={onChange} />
+        </div>
+        <p className="text-muted-foreground text-xs">{spec.help}</p>
+      </div>
+    );
+  }
   return (
-    <div className="grid gap-1.5 py-3 sm:grid-cols-[210px_minmax(0,1fr)] sm:gap-x-6">
-      <Label className="pt-1.5 leading-snug">
-        {spec.label}
-        {spec.required && <span className="text-destructive"> *</span>}
-        {spec.unit && <span className="text-muted-foreground font-normal"> ({spec.unit})</span>}
-      </Label>
+    <div className="space-y-1.5 py-3">
+      {label}
       {/* min-w-0: let the cell shrink below its content so the entity
-          picker's long selected label truncates instead of setting the
-          grid track (and the whole page) wider than the screen */}
+          picker's long selected label truncates instead of widening the
+          card (and the whole column) past its track */}
       <div className="min-w-0 space-y-1">
         {spec.kind === "entity" && (
           <EntityPicker
@@ -187,9 +214,6 @@ export function FieldRow({
             onChange={(e) => onChange(e.target.value)}
           />
         )}
-        {spec.kind === "boolean" && (
-          <Switch checked={value === true} onCheckedChange={onChange} />
-        )}
         {spec.kind === "select" && (
           <Select value={String(value)} onValueChange={onChange}>
             <SelectTrigger className="w-full max-w-md">
@@ -208,5 +232,48 @@ export function FieldRow({
         <p className="text-muted-foreground text-xs">{spec.help}</p>
       </div>
     </div>
+  );
+}
+
+/** A section card whose content collapses behind its header. The content is
+ * CSS-hidden, not unmounted, so form fields keep their state and validators
+ * while collapsed; parents force sections open when errors land in them so a
+ * validation message can never hide behind a collapsed card. */
+export function CollapsibleCard({
+  title,
+  description,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  description: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Card>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="w-full cursor-pointer border-none bg-transparent p-0 text-left"
+      >
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+          {open && <CardDescription>{description}</CardDescription>}
+          <CardAction>
+            <ChevronDown
+              aria-hidden
+              className={
+                "text-muted-foreground size-4 transition-transform " + (open ? "rotate-180" : "")
+              }
+            />
+          </CardAction>
+        </CardHeader>
+      </button>
+      <CardContent className={open ? "" : "hidden"}>{children}</CardContent>
+    </Card>
   );
 }
