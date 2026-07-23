@@ -172,6 +172,7 @@ class SimOverrides:
     wear_cost_per_kwh: float | None = None
     hold_value_scaling: float | None = None
     min_battery_export_spread: float | None = None
+    import_penalty_per_kwh: float | None = None
     min_battery_export_price: float | None = None
     daily_target_soc: float | None = None
     daily_target_hold_hours: float | None = None
@@ -315,12 +316,18 @@ def simulate_solve(
         if overrides.min_battery_export_spread is not None
         else cfg.min_battery_export_spread
     )
+    import_toll = (
+        overrides.import_penalty_per_kwh
+        if overrides.import_penalty_per_kwh is not None
+        else cfg.import_penalty_per_kwh
+    )
     opt_config = OptimizerConfig(
         terminal_value=terminal,
         reserve_penalty_per_kwh=settings.spike.reserve_penalty_per_kwh,
         solver_timeout_s=cfg.solver_timeout_s,
         soc_target_penalty_per_kwh=penalty,
         min_battery_export_spread=spread,
+        import_penalty_per_kwh=import_toll,
     )
 
     solution = solve(inputs, bp, grid_params, opt_config)

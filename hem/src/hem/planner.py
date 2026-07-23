@@ -392,6 +392,7 @@ class Planner:
             solver_timeout_s=cfg.solver_timeout_s,
             soc_target_penalty_per_kwh=self._daily_target_penalty(real_buy),
             min_battery_export_spread=cfg.min_battery_export_spread,
+            import_penalty_per_kwh=cfg.import_penalty_per_kwh,
         )
         solution = solve(data.inputs, self._battery_params, self._grid_params, opt_config)
         solution = self._apply_hysteresis(solution, data, opt_config)

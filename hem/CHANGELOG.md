@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Import reluctance** (`optimizer.import_penalty_per_kwh`, default 0 = off):
+  a virtual per-kWh toll on grid imports in the planning maths (never in
+  displayed costs) that biases the plan toward solar and stored energy —
+  import-now-to-sell-later bets must beat holding by a bigger margin, since
+  the import is certain money and the forecast sell is not. Skipped at
+  negative buy prices so paid-to-charge windows stay fully attractive.
+  Available as a Test-mode override to trial before saving.
+
 ## 0.8.0
 
 - **Time travel in Test mode**: pick a past moment and HEM replays the prices,

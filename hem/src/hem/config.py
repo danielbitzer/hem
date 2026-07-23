@@ -206,6 +206,12 @@ class Optimizer(BaseModel):
     # churn. 0 = off (export whenever marginally profitable). The automatic
     # counterpart to grid.min_battery_export_price.
     min_battery_export_spread: float = Field(default=0.0, ge=0)
+    # Import reluctance ($/kWh): a virtual toll on grid imports in the
+    # objective (never in displayed costs) that biases the plan toward solar
+    # and stored energy over importing — a risk-preference knob for people
+    # who'd rather miss a forecast sell later than import now. Skipped at
+    # negative buy prices (paid-to-charge stays attractive). 0 = off.
+    import_penalty_per_kwh: float = Field(default=0.0, ge=0)
     # must stay below the 90s cycle timeout in main.py
     # Not exposed in the Settings UI (config-file only): a timeout is a
     # never-fires safety valve — solves take tens of ms — and on timeout the

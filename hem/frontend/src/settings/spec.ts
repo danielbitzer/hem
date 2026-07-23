@@ -360,6 +360,18 @@ export const SECTIONS: SectionSpec[] = [
         { unit: "$/kWh", min: 0, max: 10, step: 0.01, default: "0" },
       ),
       number(
+        "optimizer.import_penalty_per_kwh",
+        "Import reluctance",
+        "A virtual toll added to every imported kWh in the planning maths (never in " +
+          "the displayed costs) — biases the plan toward solar and stored energy over " +
+          "importing, so import-now-to-sell-later bets need bigger margins. A " +
+          "risk-preference knob for people who'd rather miss a forecast sell than " +
+          "import now. Skipped when the buy price is negative (getting paid to " +
+          "charge stays attractive). May need a higher daily-target penalty to " +
+          "still fill via the grid. 0 = off.",
+        { unit: "$/kWh", min: 0, max: 10, step: 0.01, default: "0" },
+      ),
+      number(
         "optimizer.action_switch_threshold_dollars",
         "Action switch threshold",
         "Hysteresis: the current action only changes if switching improves the horizon " +

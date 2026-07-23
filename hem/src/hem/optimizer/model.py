@@ -102,6 +102,14 @@ class OptimizerConfig:
     # grid.min_battery_export_price — it moves with the hold value instead of a fixed
     # dollar floor, killing pennies-margin export churn on the 5-min reprices.
     min_battery_export_spread: float = 0.0
+    # Self-sufficiency bias ($/kWh): a VIRTUAL toll added to every imported kWh
+    # in the objective only — never in displayed costs (those are recomputed
+    # from raw prices in result.py). A risk-preference knob, not economics:
+    # import-dependent bets (charge now, sell into a forecast peak later) must
+    # beat holding/solar by this much more, since the import is certain money
+    # and the forecast sell is not. Gated OFF at negative buy prices — being
+    # paid to import must stay attractive. 0 = off.
+    import_penalty_per_kwh: float = 0.0
 
 
 @dataclass
@@ -275,6 +283,12 @@ def solve(
         + EPSILON_CHATTER * cp.sum(cp.multiply(pc + pd, dt))
         - config.terminal_value * soc[T]
     )
+    if config.import_penalty_per_kwh > 0:
+        # Import reluctance: virtual toll per imported kWh (see OptimizerConfig).
+        # Gated per step on the RAW buy price so negative-price windows keep
+        # their full paid-to-charge appeal.
+        toll = np.where(inputs.buy >= 0, config.import_penalty_per_kwh, 0.0)
+        cost = cost + cp.sum(cp.multiply(toll, cp.multiply(gi, dt)))
     if (
         inputs.soc_target_kwh is not None
         and np.any(inputs.soc_target_kwh > 0)
