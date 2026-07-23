@@ -9,7 +9,7 @@ sensors, touches /data, or mutates the live planner — safe to call anytime.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -165,20 +165,6 @@ SCENARIOS: dict[str, Scenario] = {
 }
 
 
-@dataclass(frozen=True)
-class SimOverrides:
-    """Optional config tweaks so users can see the effect of a knob without
-    changing their live settings. None = use the saved value."""
-    wear_cost_per_kwh: float | None = None
-    hold_value_scaling: float | None = None
-    min_battery_export_spread: float | None = None
-    import_penalty_per_kwh: float | None = None
-    min_battery_export_price: float | None = None
-    daily_target_soc: float | None = None
-    daily_target_hold_hours: float | None = None
-    daily_target_penalty_per_kwh: float | None = None
-
-
 def scenario_list() -> list[dict]:
     return [
         {"id": s.id, "label": s.label, "description": s.description}
@@ -193,7 +179,6 @@ def run_simulation(
     soc_frac: float,
     now: datetime,
     tz: ZoneInfo,
-    overrides: SimOverrides | None = None,
 ) -> dict:
     if scenario_id not in SCENARIOS:
         raise KeyError(scenario_id)
@@ -221,7 +206,6 @@ def run_simulation(
         load=load,
         soc_frac=soc_frac,
         tz=tz,
-        overrides=overrides,
         meta_extra={"scenario": scenario_id},
     )
 
@@ -236,45 +220,27 @@ def simulate_solve(
     load: np.ndarray,
     soc_frac: float,
     tz: ZoneInfo,
-    overrides: SimOverrides | None = None,
     meta_extra: dict | None = None,
 ) -> dict:
-    """The shared test-mode core: apply overrides, arm the same soft levers the
-    live planner uses, solve, and shape a /api/plan-compatible response. Pure
-    CPU — callers own where the input arrays came from (synthetic scenario or
-    recorded history)."""
-    overrides = overrides or SimOverrides()
+    """The shared test-mode core: arm the same soft levers the live planner
+    uses, solve, and shape a /api/plan-compatible response. Pure CPU — callers
+    own where the input arrays came from (synthetic scenario or recorded
+    history) and which settings apply (live, or the test-mode sandbox merged
+    over live by the endpoint)."""
     now = grid.start
 
     bp = battery_params(settings)
-    if overrides.wear_cost_per_kwh is not None:
-        bp = replace(bp, wear_cost_per_kwh=overrides.wear_cost_per_kwh)
-
     grid_params = GridParams(
         import_limit_kw=settings.grid.import_limit_kw,
         export_limit_kw=settings.grid.export_limit_kw,
-        min_battery_export_price=(
-            overrides.min_battery_export_price
-            if overrides.min_battery_export_price is not None
-            else settings.grid.min_battery_export_price
-        ),
+        min_battery_export_price=settings.grid.min_battery_export_price,
     )
 
-    target_soc = (
-        overrides.daily_target_soc
-        if overrides.daily_target_soc is not None
-        else settings.battery.daily_target_soc
-    )
-    hold_hours = (
-        overrides.daily_target_hold_hours
-        if overrides.daily_target_hold_hours is not None
-        else settings.battery.daily_target_hold_hours
-    )
     target = daily_soc_target_vector(
         grid, tz,
-        target_soc=target_soc,
+        target_soc=settings.battery.daily_target_soc,
         target_time=settings.battery.daily_target_time,
-        hold_hours=hold_hours,
+        hold_hours=settings.battery.daily_target_hold_hours,
         capacity_kwh=bp.capacity_kwh,
         soc_max_kwh=bp.soc_max_kwh,
     )
@@ -295,39 +261,27 @@ def simulate_solve(
     )
 
     cfg = settings.optimizer
-    scaling = (
-        overrides.hold_value_scaling
-        if overrides.hold_value_scaling is not None
-        else cfg.hold_value_scaling
-    )
     # The scenario fills every step, so there is no padded tail to exclude here.
     terminal = (
-        auto_terminal_value(buy, bp, floor=cfg.hold_value_floor, scaling=scaling)
+        auto_terminal_value(buy, bp, floor=cfg.hold_value_floor, scaling=cfg.hold_value_scaling)
         if cfg.terminal_soc_value == "auto"
         else float(cfg.terminal_soc_value)
     )
-    penalty = (
-        overrides.daily_target_penalty_per_kwh
-        if overrides.daily_target_penalty_per_kwh is not None
-        else settings.battery.daily_target_penalty_per_kwh
-    )
-    spread = (
-        overrides.min_battery_export_spread
-        if overrides.min_battery_export_spread is not None
-        else cfg.min_battery_export_spread
-    )
-    import_toll = (
-        overrides.import_penalty_per_kwh
-        if overrides.import_penalty_per_kwh is not None
-        else cfg.import_penalty_per_kwh
-    )
+    # Same tariff-tracking lift the live planner applies (every sim step is a
+    # real price — no padded tail to exclude).
+    penalty = settings.battery.daily_target_penalty_per_kwh
+    if settings.battery.daily_target_penalty_price_multiple > 0 and buy.size:
+        penalty = max(
+            penalty,
+            settings.battery.daily_target_penalty_price_multiple * float(np.median(buy)),
+        )
     opt_config = OptimizerConfig(
         terminal_value=terminal,
         reserve_penalty_per_kwh=settings.spike.reserve_penalty_per_kwh,
         solver_timeout_s=cfg.solver_timeout_s,
         soc_target_penalty_per_kwh=penalty,
-        min_battery_export_spread=spread,
-        import_penalty_per_kwh=import_toll,
+        min_battery_export_spread=cfg.min_battery_export_spread,
+        import_penalty_per_kwh=cfg.import_penalty_per_kwh,
     )
 
     solution = solve(inputs, bp, grid_params, opt_config)

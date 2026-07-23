@@ -2,13 +2,28 @@
 
 ## Unreleased
 
+- **Live/Test mode navigation redesign**: the Dashboard/Settings/Test tabs are
+  gone. The header now carries a top-level **Live | Test** mode switch
+  (Stripe-style; always lands on Live) and a settings gear that opens settings
+  beside the page on wide screens — dashboard and settings visible together at
+  last — and as its own page (gear becomes a back arrow) on phones.
+- **Test settings sandbox**: in Test mode the gear opens a sandbox copy of the
+  live config's battery, grid, optimizer and spike sections. Every simulation
+  runs with the sandbox, so any config change can be previewed against
+  scenarios or time travel without touching the live settings; **Reset to
+  live** re-copies the live config and **Apply to live** promotes the sandbox
+  once you're happy. Replaces the former per-field "Config overrides" list in
+  the Test tab — every solver knob is now sandboxable, not just eight of them
+  (the simulate API takes whole config sections instead of ad-hoc overrides,
+  and the daily-target price multiple now applies in simulations exactly as it
+  does live).
 - **Import reluctance** (`optimizer.import_penalty_per_kwh`, default 0 = off):
   a virtual per-kWh toll on grid imports in the planning maths (never in
   displayed costs) that biases the plan toward solar and stored energy —
   import-now-to-sell-later bets must beat holding by a bigger margin, since
   the import is certain money and the forecast sell is not. Skipped at
   negative buy prices so paid-to-charge windows stay fully attractive.
-  Available as a Test-mode override to trial before saving.
+  Trialable in the Test-mode sandbox before saving.
 - **New guide: [OPTIMIZER.md](OPTIMIZER.md)** — a plain-language explanation
   of how the optimizer decides (what it weighs, the hold value, when it
   sells, the daily target and spike reserve), with worked examples, common

@@ -1,23 +1,41 @@
 import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, FlaskConical, Settings as SettingsIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { type ConfigResponse, fetchConfig, fetchPlanOrExplain, type PlanResponse } from "./api";
 import { installIosScrollKick } from "./iosScrollKick";
 import { PlanView } from "./PlanView";
+import { buildDefaults, type FormValues, sandboxDoc } from "./settings/form";
+import { SandboxPanel } from "./settings/SandboxPanel";
 import { SettingsView } from "./settings/SettingsView";
 import { TestView } from "./TestView";
 import { fmtTime } from "./theme";
 
 const REFRESH_MS = 60_000;
 
-type View = "dashboard" | "settings" | "test";
-const VIEWS: { id: View; label: string }[] = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "settings", label: "Settings" },
-  { id: "test", label: "Test" },
-];
+/** Top-level mode, Stripe-style: Live is the real dashboard and settings;
+ * Test is the simulation sandbox. Always lands on Live. */
+type AppMode = "live" | "test";
+
+/** Debug/screenshot affordance only: `?mode=test&settings=1` pre-sets the UI
+ * state. HA ingress never adds query params, so real users always land on
+ * Live with the panel closed (or auto-opened by the unconfigured effect). */
+function initialUiState(): { mode: AppMode; open: boolean | null } {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    return {
+      mode: p.get("mode") === "test" ? "test" : "live",
+      open: p.has("settings") ? p.get("settings") !== "0" : null,
+    };
+  } catch {
+    return { mode: "live", open: null };
+  }
+}
 
 export function App() {
-  const [chosenView, setChosenView] = useState<View | null>(null);
+  const [initial] = useState(initialUiState);
+  const [mode, setMode] = useState<AppMode>(initial.mode);
+  // null = the user hasn't chosen yet (lets the unconfigured effect open it)
+  const [openChosen, setOpenChosen] = useState<boolean | null>(initial.open);
   // Polled so the lifecycle banner clears when the main loop flips to
   // running shortly after an enable (the save-triggered refetch can race it).
   const config = useQuery({
@@ -34,21 +52,47 @@ export function App() {
   // Work around a WKWebView scroll bug in HA's iOS app (ingress iframe won't
   // scroll until it gains focus). Harmless everywhere else. See the module.
   useEffect(() => installIosScrollKick(), []);
-  // A fresh install lands (and STAYS — hence pinning it as the chosen view,
-  // or the first successful save would yank the user to the dashboard) in
-  // Settings; once the user navigates, their choice wins.
+  // A fresh install lands with the settings panel open (and it STAYS open —
+  // pinned as the user's choice, or the first successful save would slam it
+  // shut); once the user toggles the gear, their choice wins.
   useEffect(() => {
-    if (chosenView === null && config.data && !config.data.configured) {
-      setChosenView("settings");
+    if (openChosen === null && config.data && !config.data.configured) {
+      setOpenChosen(true);
     }
-  }, [chosenView, config.data]);
-  const view: View = chosenView ?? "dashboard";
+  }, [openChosen, config.data]);
+  const settingsOpen = openChosen ?? false;
+
+  // The test-mode sandbox: an editable copy of the live config's solver
+  // sections. Lifted here so it survives panel toggles and mode switches;
+  // created lazily from the live config on first entry into Test.
+  const liveConfig = config.data?.config ?? null;
+  const [sandboxValues, setSandboxValues] = useState<FormValues | null>(null);
+  const [sandboxErrors, setSandboxErrors] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (mode === "test" && sandboxValues === null && liveConfig) {
+      setSandboxValues(buildDefaults(liveConfig));
+    }
+  }, [mode, sandboxValues, liveConfig]);
+  const sandbox = sandboxValues ? sandboxDoc(sandboxValues) : null;
+  const sandboxDirty =
+    sandbox !== null &&
+    liveConfig !== null &&
+    JSON.stringify(sandbox) !== JSON.stringify(sandboxDoc(buildDefaults(liveConfig)));
+
+  // Content columns are CSS-hidden rather than unmounted so a mode flip
+  // never throws away simulation results or dashboard state.
+  const contentCls = (m: AppMode) =>
+    "min-w-0 max-w-[960px] flex-1 flex-col gap-3.5 " +
+    (mode !== m ? "hidden" : settingsOpen ? "hidden lg:flex" : "flex");
+  const containerCls = settingsOpen ? "max-w-[1460px]" : "max-w-[960px]";
 
   return (
     <div className="min-h-screen">
       {/* Full-bleed header bar; its content aligns with the capped main column */}
       <header className="border-b border-border bg-card px-[22px] py-[18px]">
-        <div className="mx-auto flex max-w-[960px] flex-wrap items-start justify-between gap-x-4 gap-y-2.5">
+        <div
+          className={`mx-auto flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2.5 ${containerCls}`}
+        >
           <div className="min-w-0 max-sm:w-full">
             <h1 className="text-[17px] font-bold text-foreground">Home Energy Manager</h1>
             {plan.data && (
@@ -62,34 +106,134 @@ export function App() {
               <div className="mt-1 text-xs text-destructive">{plan.error.message}</div>
             )}
           </div>
-          {/* Full-width segmented toggle on phones; compact pill on desktop.
-              The track is a dark inset (bg-tab-bg) and the active tab a raised
-              surface so the two read as distinct from the header bar. */}
-          <nav className="flex shrink-0 gap-[3px] rounded-full bg-tab-bg p-[3px] max-sm:w-full">
-            {VIEWS.map((v) => (
-              <button
-                key={v.id}
-                type="button"
-                aria-current={view === v.id ? "page" : undefined}
-                onClick={() => setChosenView(v.id)}
-                className={
-                  "cursor-pointer rounded-full border-none px-4 py-[7px] text-[13px] font-semibold transition-all max-sm:flex-1 max-sm:py-2 " +
-                  (view === v.id
-                    ? "bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.12)] dark:bg-[#2c2c2c] dark:shadow-none"
-                    : "bg-transparent text-muted-foreground hover:text-foreground")
-                }
-              >
-                {v.label}
-              </button>
-            ))}
-          </nav>
+          <div className="flex shrink-0 items-center gap-2.5 max-sm:w-full">
+            <ModeSwitch mode={mode} onChange={setMode} />
+            <button
+              type="button"
+              aria-label={settingsOpen ? "Close settings" : "Open settings"}
+              aria-pressed={settingsOpen}
+              onClick={() => setOpenChosen(!settingsOpen)}
+              className={
+                "flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition-colors " +
+                (settingsOpen
+                  ? "border-primary/35 bg-primary/10 text-primary"
+                  : "border-border bg-transparent text-muted-foreground hover:text-foreground")
+              }
+            >
+              {settingsOpen ? (
+                <>
+                  {/* On phones the panel replaces the page, so "close" reads
+                      as going back; on wide screens it stays a gear toggle. */}
+                  <ArrowLeft className="size-[18px] lg:hidden" />
+                  <SettingsIcon className="size-[18px] max-lg:hidden" />
+                </>
+              ) : (
+                <SettingsIcon className="size-[18px]" />
+              )}
+            </button>
+          </div>
         </div>
       </header>
-      <main className="mx-auto flex max-w-[960px] flex-col gap-3.5 p-5">
-        {view === "settings" && <SettingsView />}
-        {view === "test" && <TestView />}
-        {view === "dashboard" && <Dashboard config={config.data} plan={plan.data} />}
+      <main className={`mx-auto flex w-full items-start justify-center gap-5 p-5 ${containerCls}`}>
+        <div className={contentCls("live")}>
+          <Dashboard config={config.data} plan={plan.data} />
+        </div>
+        <div className={contentCls("test")}>
+          <TestView
+            sandbox={sandbox}
+            sandboxDirty={sandboxDirty}
+            onSandboxErrors={(byField) => {
+              setSandboxErrors(byField);
+              setOpenChosen(true); // surface the panel the errors point at
+            }}
+          />
+        </div>
+        {settingsOpen && (
+          <aside className="flex w-full min-w-0 flex-col gap-3 lg:w-[430px] lg:shrink-0">
+            {mode === "live" ? (
+              <>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 px-1">
+                  <h2 className="text-[15px] font-bold">Settings</h2>
+                  <span className="text-muted-foreground text-xs">saving applies immediately</span>
+                </div>
+                <SettingsView />
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 px-1">
+                  <h2 className="text-[15px] font-bold">Test settings</h2>
+                  <span className="rounded bg-[#1a73d9]/10 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-[#1a73d9] dark:bg-[#5b9bea]/15 dark:text-[#7fb3f5]">
+                    SANDBOX
+                  </span>
+                </div>
+                <p className="text-muted-foreground px-1 text-xs">
+                  Changes here affect simulations only — nothing reaches your live settings
+                  or the battery until you apply them.
+                </p>
+                {sandboxValues ? (
+                  <SandboxPanel
+                    values={sandboxValues}
+                    onChange={setSandboxValues}
+                    errors={sandboxErrors}
+                    onErrors={setSandboxErrors}
+                    liveConfig={liveConfig}
+                    dirty={sandboxDirty}
+                  />
+                ) : (
+                  <div className="text-muted-foreground rounded-lg border border-dashed border-border p-6 text-center text-sm">
+                    Configure HEM first — the test sandbox starts as a copy of your live
+                    settings.
+                  </div>
+                )}
+              </>
+            )}
+          </aside>
+        )}
       </main>
+    </div>
+  );
+}
+
+/** The Live | Test segmented switch. Deliberately NOT styled like the old
+ * round tab pill: squared segments, a bordered track, and a blue active Test
+ * segment so mode reads as a different axis than navigation. */
+function ModeSwitch({ mode, onChange }: { mode: AppMode; onChange: (m: AppMode) => void }) {
+  const seg =
+    "flex flex-1 sm:flex-none cursor-pointer items-center justify-center gap-1.5 rounded-md " +
+    "border-none px-3.5 py-[6px] text-[13px] font-semibold transition-colors ";
+  const inactive = "bg-transparent text-muted-foreground hover:text-foreground";
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Mode"
+      className="flex gap-[2px] rounded-lg border border-border bg-tab-bg p-[2px] max-sm:flex-1"
+    >
+      <button
+        type="button"
+        role="radio"
+        aria-checked={mode === "live"}
+        onClick={() => onChange("live")}
+        className={
+          seg +
+          (mode === "live"
+            ? "bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,.12)] dark:bg-[#2c2c2c] dark:shadow-none"
+            : inactive)
+        }
+      >
+        Live
+      </button>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={mode === "test"}
+        onClick={() => onChange("test")}
+        className={
+          seg + (mode === "test" ? "bg-[#1a73d9] text-white dark:bg-[#1e5fbd]" : inactive)
+        }
+      >
+        <FlaskConical className="size-3.5" aria-hidden />
+        Test
+      </button>
     </div>
   );
 }
@@ -141,9 +285,9 @@ function vacationBanner(plan: PlanResponse): string | null {
 function lifecycleBanner(config: ConfigResponse | undefined): string | null {
   if (!config || config.lifecycle === "running") return null;
   return config.lifecycle === "unconfigured"
-    ? "HEM is not configured yet — no planning cycles run. Open Settings to configure and enable it."
+    ? "HEM is not configured yet — no planning cycles run. Open Settings (⚙) to configure and enable it."
     : "HEM is disabled — no planning cycles run and your actuator's failsafe keeps the inverter " +
-        "in self-consumption. Enable it in Settings.";
+        "in self-consumption. Enable it in Settings (⚙).";
 }
 
 function Dashboard({

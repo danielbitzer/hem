@@ -27,7 +27,7 @@ from hem.config import Settings
 from hem.forecast.load import normalize_load_units
 from hem.ha.client import HaClient
 from hem.models import Series
-from hem.simulate import SimOverrides, simulate_solve
+from hem.simulate import simulate_solve
 from hem.timegrid import TimeGrid, coverage, resample_mean
 
 # Fetch a little before `at` so the piecewise-constant series has a defined
@@ -123,7 +123,6 @@ async def run_history_simulation(
     soc_frac: float | None,
     wall_now: datetime,
     tz: ZoneInfo,
-    overrides: SimOverrides | None = None,
 ) -> dict:
     """Replay the optimizer over recorded history starting at `at`.
 
@@ -263,6 +262,5 @@ async def run_history_simulation(
         load=load,
         soc_frac=soc_frac,
         tz=tz,
-        overrides=overrides,
         meta_extra=meta_extra,
     )

@@ -304,10 +304,15 @@ action/setpoint/SoC/cost tiles plus charts of prices, PV/load forecast, planned
 battery power with grid flows, and the SoC trajectory. Auto-refreshes every
 minute; fully offline (no CDN).
 
+The page has two top-level modes, switched in the header: **Live** (the real
+plan, and settings that apply immediately when saved) and **Test** (a
+simulation sandbox — nothing in it touches your live plan or the inverter).
+The gear button opens settings beside the page on wide screens and as its own
+page on phones; what it opens depends on the mode.
+
 ### Test mode
 
-The **Test** tab runs the optimizer without touching your live plan or the
-inverter, in two ways:
+Test mode runs the optimizer against data of your choosing, in two ways:
 
 - **Scenarios** — hand-made price shapes ("price spike tonight", "negative
   feed-in tomorrow", …) with a starting-SoC slider.
@@ -320,8 +325,12 @@ inverter, in two ways:
   recorder retention (~10 days by default), and real solar needs the optional
   `entities.pv_power` sensor.
 
-Both accept live config overrides (wear cost, hold value scaling, export
-floor/deadband, daily target) so you can preview a change before saving it.
+In Test mode the gear opens **test settings**: a sandbox copy of the live
+config's battery, grid, optimizer and spike sections. Every simulation uses
+the sandbox, so you can preview any config change — a different wear cost, a
+bigger battery, a new export floor — without touching your live settings.
+**Reset to live** re-copies the live config; **Apply to live** promotes the
+sandbox sections to the real config once you're happy with them.
 
 ## Controlling your inverter (the actuator automation)
 

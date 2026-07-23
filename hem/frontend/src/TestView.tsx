@@ -1,6 +1,12 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { fetchScenarios, runHistorySimulation, runSimulation, type SimOverrides } from "./api";
+import {
+  ConfigValidationError,
+  fetchScenarios,
+  runHistorySimulation,
+  runSimulation,
+  type SandboxConfig,
+} from "./api";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card";
 import { Input } from "./components/ui/input";
@@ -13,13 +19,7 @@ import {
   SelectValue,
 } from "./components/ui/select";
 import { PlanView } from "./PlanView";
-
-const numOrNull = (s: string): number | null => {
-  const t = s.trim();
-  if (t === "") return null;
-  const n = Number(t);
-  return Number.isNaN(n) ? null : n;
-};
+import { mapServerErrors } from "./settings/form";
 
 /** Yesterday at this time, as a datetime-local value (browser-local). */
 function defaultAt(): string {
@@ -36,38 +36,6 @@ const MODES: { id: Mode; label: string }[] = [
   { id: "scenario", label: "Scenarios" },
   { id: "history", label: "Time travel" },
 ];
-
-function Override({
-  label,
-  unit,
-  placeholder,
-  value,
-  onChange,
-  help,
-}: {
-  label: string;
-  unit: string;
-  placeholder: string;
-  value: string;
-  onChange: (v: string) => void;
-  help: string;
-}) {
-  return (
-    <div className="space-y-1">
-      <Label className="text-xs">
-        {label} <span className="text-muted-foreground font-normal">({unit})</span>
-      </Label>
-      <Input
-        type="number"
-        className="h-auto w-full rounded-md bg-secondary px-[13px] py-2 font-mono text-sm"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      <p className="text-muted-foreground text-[11px] leading-snug">{help}</p>
-    </div>
-  );
-}
 
 function SocSlider({
   socPct,
@@ -97,67 +65,69 @@ function SocSlider({
   );
 }
 
-export function TestView() {
+export function TestView({
+  sandbox,
+  sandboxDirty,
+  onSandboxErrors,
+}: {
+  /** The sandbox config sections sent with every simulation (null until the
+   * live config has loaded). */
+  sandbox: SandboxConfig | null;
+  sandboxDirty: boolean;
+  /** Simulate rejected the sandbox config — per-field errors for the panel. */
+  onSandboxErrors: (byField: Record<string, string>) => void;
+}) {
   const scenarios = useQuery({ queryKey: ["scenarios"], queryFn: fetchScenarios });
   const [mode, setMode] = useState<Mode>("scenario");
   const [scenario, setScenario] = useState("");
   const [at, setAt] = useState(defaultAt);
   const [recordedSoc, setRecordedSoc] = useState(true);
   const [socPct, setSocPct] = useState(70);
-  const [wear, setWear] = useState("");
-  const [holdScaling, setHoldScaling] = useState("");
-  const [exportSpread, setExportSpread] = useState("");
-  const [importToll, setImportToll] = useState("");
-  const [minExport, setMinExport] = useState("");
-  const [targetSoc, setTargetSoc] = useState("");
-  const [targetHold, setTargetHold] = useState("");
-  const [targetPenalty, setTargetPenalty] = useState("");
 
   useEffect(() => {
     if (!scenario && scenarios.data?.[0]) setScenario(scenarios.data[0].id);
   }, [scenario, scenarios.data]);
 
-  const overrides: SimOverrides = {
-    wear_cost_per_kwh: numOrNull(wear),
-    // displayed as %, sent as the multiplier the API expects (null = saved)
-    hold_value_scaling: numOrNull(holdScaling) !== null ? numOrNull(holdScaling)! / 100 : null,
-    min_battery_export_spread: numOrNull(exportSpread),
-    min_battery_export_price: numOrNull(minExport),
-    import_penalty_per_kwh: numOrNull(importToll),
-    daily_target_soc: numOrNull(targetSoc),
-    daily_target_hold_hours: numOrNull(targetHold),
-    daily_target_penalty_per_kwh: numOrNull(targetPenalty),
-  };
-
   const sim = useMutation({
     mutationFn: () =>
       mode === "scenario"
-        ? runSimulation({ scenario, soc_frac: socPct / 100, overrides })
+        ? runSimulation({ scenario, soc_frac: socPct / 100, config: sandbox ?? undefined })
         : runHistorySimulation({
             at,
             soc_frac: recordedSoc ? null : socPct / 100,
-            overrides,
+            config: sandbox ?? undefined,
           }),
+    onError: (e) => {
+      if (e instanceof ConfigValidationError) {
+        onSandboxErrors(mapServerErrors(e.fieldErrors).byField);
+      }
+    },
   });
 
   const chosen = scenarios.data?.find((s) => s.id === scenario);
   const canRun = mode === "scenario" ? Boolean(scenario) : Boolean(at);
   const notes = sim.data?.meta.notes ?? [];
+  const simError =
+    sim.error instanceof ConfigValidationError
+      ? "The test settings are invalid — fix the highlighted fields in the settings panel."
+      : sim.error
+        ? String(sim.error)
+        : "";
 
   return (
     <>
       <Card>
         <CardHeader>
-          <CardTitle>Test mode</CardTitle>
+          <CardTitle>Run a simulation</CardTitle>
           <CardDescription>
             Run the optimiser without waiting for real prices to change — against a made-up
             price scenario, or time-travelled onto data Home Assistant actually recorded.
-            Nothing here touches your live plan or the inverter; it only simulates. Overrides
-            let you preview a config change without saving it.
+            Nothing here touches your live plan or the inverter. Every run uses the test
+            settings (the ⚙ panel), so you can preview a config change before applying it.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          {/* Scenarios | Time travel toggle, styled like the header tab pill */}
+          {/* Scenarios | Time travel toggle, styled like the old tab pill */}
           <nav className="flex w-fit gap-[3px] rounded-full bg-tab-bg p-[3px] max-sm:w-full">
             {MODES.map((m) => (
               <button
@@ -246,79 +216,7 @@ export function TestView() {
             </div>
           )}
 
-          <details className="rounded-md border border-border bg-secondary/40 px-3.5 py-2.5">
-            <summary className="cursor-pointer text-[13px] font-medium text-muted-foreground select-none">
-              Config overrides (optional)
-            </summary>
-            <div className="mt-3 grid gap-4 sm:grid-cols-2">
-              <Override
-                label="Wear cost"
-                unit="$/kWh"
-                placeholder="saved"
-                value={wear}
-                onChange={setWear}
-                help="Battery throughput/degradation cost. Typical Li-ion ≈ 0.5–3c."
-              />
-              <Override
-                label="Hold value scaling"
-                unit="%"
-                placeholder="saved"
-                value={holdScaling}
-                onChange={setHoldScaling}
-                help="Scales the rebuy-anchored hold value. >100% = holdier, <100% = trades more."
-              />
-              <Override
-                label="Min battery export spread"
-                unit="$/kWh"
-                placeholder="saved / off"
-                value={exportSpread}
-                onChange={setExportSpread}
-                help="Deadband: only sell battery to the grid when the feed-in beats holding by this margin."
-              />
-              <Override
-                label="Min battery export price"
-                unit="$/kWh"
-                placeholder="saved / off"
-                value={minExport}
-                onChange={setMinExport}
-                help="Hard floor: battery won't discharge to the grid below this feed-in price."
-              />
-              <Override
-                label="Import reluctance"
-                unit="$/kWh"
-                placeholder="saved / off"
-                value={importToll}
-                onChange={setImportToll}
-                help="Virtual toll on grid imports — prefers solar/stored energy. Skipped at negative prices."
-              />
-              <Override
-                label="Daily target SoC"
-                unit="0–1"
-                placeholder="saved"
-                value={targetSoc}
-                onChange={setTargetSoc}
-                help="Soft target held from the daily target time (1 = 100%)."
-              />
-              <Override
-                label="Daily target hold"
-                unit="h"
-                placeholder="saved"
-                value={targetHold}
-                onChange={setTargetHold}
-                help="Hours to hold the target as a floor through the evening. 0 = single instant."
-              />
-              <Override
-                label="Daily target penalty"
-                unit="$/kWh·h"
-                placeholder="saved"
-                value={targetPenalty}
-                onChange={setTargetPenalty}
-                help="Willingness-to-pay per kWh-hour short of the target. Higher = fills harder."
-              />
-            </div>
-          </details>
-
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Button type="button" disabled={!canRun || sim.isPending} onClick={() => sim.mutate()}>
               {sim.isPending
                 ? "Running…"
@@ -331,10 +229,15 @@ export function TestView() {
                 Solved in {Math.round(sim.data.solve_ms)} ms · {sim.data.solver_status}
               </span>
             )}
+            {sandboxDirty && (
+              <span className="text-muted-foreground text-xs">
+                Using test settings that differ from live.
+              </span>
+            )}
           </div>
-          {sim.isError && (
+          {simError && (
             <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3.5 py-2.5 text-[13px] text-destructive">
-              {String(sim.error)}
+              {simError}
             </div>
           )}
         </CardContent>

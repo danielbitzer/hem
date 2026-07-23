@@ -30,22 +30,31 @@ from hem.config_store import ConfigController
 from hem.forecast.load import default_timezone
 from hem.ha.client import HaClient
 from hem.models import Plan
-from hem.simulate import SCENARIOS, SimOverrides, run_simulation, scenario_list
+from hem.simulate import SCENARIOS, run_simulation, scenario_list
 from hem.time_travel import run_history_simulation
 
+# The config sections test mode's sandbox settings may replace for a
+# simulation. Everything else (entities, load learning, vacation, enabled)
+# always comes from the live config — it either doesn't affect a sim or
+# must not be spoofable from the sandbox.
+SANDBOX_SECTIONS = ("battery", "grid", "optimizer", "spike")
 
-def _parse_overrides(ov: dict) -> SimOverrides:
-    """The optional config-tweak block shared by both simulate endpoints."""
-    return SimOverrides(
-        wear_cost_per_kwh=_opt_float(ov.get("wear_cost_per_kwh")),
-        hold_value_scaling=_opt_float(ov.get("hold_value_scaling")),
-        min_battery_export_spread=_opt_float(ov.get("min_battery_export_spread")),
-        import_penalty_per_kwh=_opt_float(ov.get("import_penalty_per_kwh")),
-        min_battery_export_price=_opt_float(ov.get("min_battery_export_price")),
-        daily_target_soc=_opt_float(ov.get("daily_target_soc")),
-        daily_target_hold_hours=_opt_float(ov.get("daily_target_hold_hours")),
-        daily_target_penalty_per_kwh=_opt_float(ov.get("daily_target_penalty_per_kwh")),
-    )
+
+def _sandbox_settings(current: Settings, sandbox: object) -> Settings:
+    """Test-mode settings: the sandbox sections merged over the live config.
+
+    `sandbox` is the request's optional "config" value — section-shaped like
+    the /api/config document; a section that is present REPLACES the live one
+    (omitted fields fall back to pydantic defaults, exactly matching what the
+    sandbox form displays). Raises ValidationError for the endpoint to shape
+    into the same per-field 422 the settings form uses."""
+    if not isinstance(sandbox, dict) or not sandbox:
+        return current
+    doc = current.model_dump(mode="json")
+    for section in SANDBOX_SECTIONS:
+        if section in sandbox:
+            doc[section] = sandbox[section]
+    return Settings.model_validate(doc)
 
 
 def _resolve_tz() -> ZoneInfo:
@@ -221,16 +230,18 @@ def create_app(
             if scenario not in SCENARIOS:
                 return JSONResponse({"error": f"unknown scenario: {scenario!r}"}, 400)
             soc = _opt_float(body.get("soc_frac"))
-            overrides = _parse_overrides(body.get("overrides") or {})
+            try:
+                settings = _sandbox_settings(current, body.get("config"))
+            except ValidationError as e:
+                return JSONResponse({"errors": _validation_errors(e)}, status_code=422)
             try:
                 result = await asyncio.to_thread(
                     run_simulation,
-                    current,
+                    settings,
                     scenario_id=scenario,
                     soc_frac=soc if soc is not None else 0.5,
                     now=datetime.now(UTC),
                     tz=_resolve_tz(),
-                    overrides=overrides,
                 )
             except Exception as e:  # noqa: BLE001 - report solver/setup failures to the UI
                 return JSONResponse({"error": f"simulation failed: {e}"}, status_code=500)
@@ -258,16 +269,18 @@ def create_app(
                     {"error": "'at' must be an ISO datetime, e.g. 2026-07-20T17:30"}, 400
                 )
             soc = _opt_float(body.get("soc_frac"))
-            overrides = _parse_overrides(body.get("overrides") or {})
+            try:
+                settings = _sandbox_settings(current, body.get("config"))
+            except ValidationError as e:
+                return JSONResponse({"errors": _validation_errors(e)}, status_code=422)
             try:
                 result = await run_history_simulation(
-                    current,
+                    settings,
                     client,
                     at=at,
                     soc_frac=soc,
                     wall_now=datetime.now(UTC),
                     tz=_resolve_tz(),
-                    overrides=overrides,
                 )
             except ValueError as e:  # user-facing validation (bad time, no data)
                 return JSONResponse({"error": str(e)}, status_code=400)
