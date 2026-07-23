@@ -345,9 +345,11 @@ export const SECTIONS: SectionSpec[] = [
       number(
         "optimizer.hold_value_scaling",
         "Hold value scaling",
-        "Scales the auto hold value. Above 100% makes the battery holdier (keeps " +
-          "charge longer); below 100% makes it trade more freely. 100% = the raw " +
-          "rebuy anchor.",
+        "Scales the auto hold value. Above 100% makes the battery holdier — but " +
+          "also makes it IMPORT to stockpile (energy valued above its rebuy cost " +
+          "turns cheap-window charging into free money in the model). Below 100% " +
+          "trades more freely. Leave at 100% unless you understand that trade; " +
+          "prefer the export spread or daily target for keeping more in the tank.",
         { unit: "%", percent: true, min: 0, max: 500, step: 5, default: "100" },
       ),
       number(

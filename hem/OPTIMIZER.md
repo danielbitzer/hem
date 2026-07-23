@@ -90,6 +90,15 @@ Two guard rails:
 the battery holds charge more stubbornly; below 100% it trades more freely.
 (It can't lift the value past the flat-day cap — flat days stay sensible.)
 
+> **Pitfall — scaling above 100% causes buy-to-stockpile imports.** At 110%
+> the model believes stored energy is worth 10% *more* than it costs to buy
+> back — so importing at any price within ~10% of the cheapest upcoming
+> window looks like free money, and the plan will grid-charge just to hold
+> the energy. A single "value of stored energy" can't make the battery
+> holdier without also making acquiring more attractive. If you see
+> unexplained imports in cheap windows, check this knob first; prefer the
+> export spread or the daily target for "keep more in the tank" behaviour.
+
 > **Pitfall — setting a fixed hold value.** You can replace "auto" with a
 > fixed number, but a too-high value makes the battery hoard (import to run
 > the house while "saving" its charge), and a too-low one brings back

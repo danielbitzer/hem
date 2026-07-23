@@ -7,6 +7,9 @@
   sells, the daily target and spike reserve), with worked examples, common
   configuration pitfalls, a setup checklist for new systems, and a
   which-knob-for-which-itch quick reference. Linked from DOCS.
+- Hold value scaling help now warns that values above 100% cause
+  buy-to-stockpile imports (stored energy valued above its rebuy cost makes
+  cheap-window charging look like free money) — seen live at 110%.
 
 ## 0.8.0
 
