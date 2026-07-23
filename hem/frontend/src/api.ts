@@ -153,6 +153,7 @@ export interface SimOverrides {
   hold_value_scaling?: number | null;
   min_battery_export_spread?: number | null;
   min_battery_export_price?: number | null;
+  import_penalty_per_kwh?: number | null;
   daily_target_soc?: number | null;
   daily_target_hold_hours?: number | null;
   daily_target_penalty_per_kwh?: number | null;

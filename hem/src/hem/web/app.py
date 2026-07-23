@@ -40,6 +40,7 @@ def _parse_overrides(ov: dict) -> SimOverrides:
         wear_cost_per_kwh=_opt_float(ov.get("wear_cost_per_kwh")),
         hold_value_scaling=_opt_float(ov.get("hold_value_scaling")),
         min_battery_export_spread=_opt_float(ov.get("min_battery_export_spread")),
+        import_penalty_per_kwh=_opt_float(ov.get("import_penalty_per_kwh")),
         min_battery_export_price=_opt_float(ov.get("min_battery_export_price")),
         daily_target_soc=_opt_float(ov.get("daily_target_soc")),
         daily_target_hold_hours=_opt_float(ov.get("daily_target_hold_hours")),

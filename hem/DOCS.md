@@ -223,6 +223,16 @@ buffer until learning is active. The goal state is always a learned forecast.
   won't churn export for pennies on the 5-minute reprices. The automatic
   counterpart to `grid.min_battery_export_price`. A cent or two is a sensible starting
   point if you see marginal exports you'd rather not make.
+- `import_penalty_per_kwh` (0 = off; "Import reluctance" in the UI) — a
+  **virtual** toll added to every imported kWh in the objective, never in the
+  displayed costs. A risk-preference knob, not economics: the optimizer is
+  risk-neutral and happily imports now against a forecast sell later; the
+  toll makes import-dependent bets need bigger margins, biasing the plan
+  toward solar and stored energy. Genuine spikes clear any sensible toll.
+  Skipped per-interval when the buy price is negative, so paid-to-charge
+  windows keep their full appeal. Side effect to know: grid top-ups toward
+  the daily target also pay the toll, so an aggressive value may need a
+  higher target penalty. A few cents is a sensible starting point.
 - `solver_timeout_s` (30, max 60) — HiGHS time limit per solve. Config-file
   only (not in the Settings UI): normal solves take tens of milliseconds, so
   this is a never-fires safety valve — and if it ever does fire, the planner

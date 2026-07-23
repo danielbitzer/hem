@@ -460,3 +460,56 @@ def test_min_battery_export_price_does_not_block_grid_charging():
     sol = solve(inputs, BATTERY, grid, config(terminal_value=0.25))
     assert sol.charge_kw[0:6].sum() > 4.0  # grid-charged despite the floor
     assert sol.grid_import_kw[0:6].max() > 1.0
+
+
+# ---- import reluctance (the self-sufficiency toll) ---------------------------
+
+
+def test_import_penalty_suppresses_marginal_import_arbitrage():
+    """A charge-at-20c-to-sell-at-30c bet clears a few cents without the toll
+    and dies with it. Real opportunities (big spreads) survive — only thin,
+    forecast-dependent bets are filtered. load=0 isolates the export bet (with
+    house load present the toll correctly makes pre-charging for the house
+    MORE attractive — later load imports pay the toll too)."""
+    buy = np.full(24, 0.32)
+    buy[0:6] = 0.20  # cheap-ish charge window
+    sell = np.full(24, 0.05)
+    sell[12:16] = 0.30  # modest sell window later (~4c/kWh net without toll)
+    inputs = make_inputs(buy=buy, sell=sell, load=0.0, soc0=2.0)
+    free = solve(inputs, BATTERY, GRID, config(terminal_value=0.05))
+    tolled = solve(
+        inputs, BATTERY, GRID,
+        OptimizerConfig(terminal_value=0.05, reserve_penalty_per_kwh=0.5,
+                        solver_timeout_s=30, import_penalty_per_kwh=0.08),
+    )
+    assert free.charge_kw[0:6].sum() > 3.0  # takes the thin bet
+    assert tolled.charge_kw[0:6].sum() < 0.01  # toll kills it
+
+
+def test_import_penalty_skips_negative_buy_prices():
+    """The carve-out: being PAID to import must stay attractive — the toll
+    never applies at negative buy prices."""
+    buy = np.full(24, 0.30)
+    buy[0:6] = -0.05
+    inputs = make_inputs(buy=buy, sell=0.02, soc0=2.0)
+    sol = solve(
+        inputs, BATTERY, GRID,
+        OptimizerConfig(terminal_value=0.25, reserve_penalty_per_kwh=0.5,
+                        solver_timeout_s=30, import_penalty_per_kwh=0.10),
+    )
+    assert sol.charge_kw[0:6].sum() > 4.0  # still gets paid to charge
+    assert sol.grid_import_kw[0:6].max() > 1.0
+
+
+def test_import_penalty_never_blocks_unavoidable_load_imports():
+    """No alternative exists (flat prices, empty battery): the toll shifts
+    nothing — the house is still fed directly from the grid."""
+    inputs = make_inputs(buy=0.30, sell=0.10, load=1.5, soc0=0.0)
+    terminal = auto_terminal_value(inputs.buy, BATTERY)
+    sol = solve(
+        inputs, BATTERY, GRID,
+        OptimizerConfig(terminal_value=terminal, reserve_penalty_per_kwh=0.5,
+                        solver_timeout_s=30, import_penalty_per_kwh=0.10),
+    )
+    assert float(np.min(sol.grid_import_kw)) >= 1.5 - 1e-6  # load still fed
+    assert sol.charge_kw.max() < 0.01  # and no phantom behavior appears

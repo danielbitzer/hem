@@ -107,6 +107,7 @@ export function TestView() {
   const [wear, setWear] = useState("");
   const [holdScaling, setHoldScaling] = useState("");
   const [exportSpread, setExportSpread] = useState("");
+  const [importToll, setImportToll] = useState("");
   const [minExport, setMinExport] = useState("");
   const [targetSoc, setTargetSoc] = useState("");
   const [targetHold, setTargetHold] = useState("");
@@ -122,6 +123,7 @@ export function TestView() {
     hold_value_scaling: numOrNull(holdScaling) !== null ? numOrNull(holdScaling)! / 100 : null,
     min_battery_export_spread: numOrNull(exportSpread),
     min_battery_export_price: numOrNull(minExport),
+    import_penalty_per_kwh: numOrNull(importToll),
     daily_target_soc: numOrNull(targetSoc),
     daily_target_hold_hours: numOrNull(targetHold),
     daily_target_penalty_per_kwh: numOrNull(targetPenalty),
@@ -280,6 +282,14 @@ export function TestView() {
                 value={minExport}
                 onChange={setMinExport}
                 help="Hard floor: battery won't discharge to the grid below this feed-in price."
+              />
+              <Override
+                label="Import reluctance"
+                unit="$/kWh"
+                placeholder="saved / off"
+                value={importToll}
+                onChange={setImportToll}
+                help="Virtual toll on grid imports — prefers solar/stored energy. Skipped at negative prices."
               />
               <Override
                 label="Daily target SoC"
