@@ -15,7 +15,6 @@ import {
 import { SandboxPanel } from "./settings/SandboxPanel";
 import { SettingsView } from "./settings/SettingsView";
 import { type SimStatus, TestView } from "./TestView";
-import { fmtTime } from "./theme";
 
 const REFRESH_MS = 60_000;
 
@@ -109,19 +108,9 @@ export function App() {
       {/* Full-width app bar: title left, mode switch + gear right */}
       <header className="shrink-0 border-b border-border bg-card px-[22px] py-[18px]">
         <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2.5">
-          <div className="min-w-0 max-sm:w-full">
-            <h1 className="text-[17px] font-bold text-foreground">Home Energy Manager</h1>
-            {plan.data && (
-              // Truncates to one line on desktop; wraps on phones (where the
-              // full-width header has room) instead of clipping to "79 interv…".
-              <div className="mt-1 min-w-0 font-mono text-xs text-muted-foreground sm:truncate">
-                {metaLine(plan.data)}
-              </div>
-            )}
-            {plan.error && (
-              <div className="mt-1 text-xs text-destructive">{plan.error.message}</div>
-            )}
-          </div>
+          <h1 className="min-w-0 text-[17px] font-bold text-foreground max-sm:w-full">
+            Home Energy Manager
+          </h1>
           <div className="flex shrink-0 items-center gap-2.5 max-sm:w-full">
             <ModeSwitch mode={mode} onChange={setMode} />
             <button
@@ -153,7 +142,11 @@ export function App() {
       <main className="flex min-h-0 w-full flex-1 items-stretch">
         <div className={contentCls("live")} data-scrollkick="">
           <div className="mx-auto flex w-full max-w-[960px] flex-col gap-3.5 p-5">
-            <Dashboard config={config.data} plan={plan.data} />
+            <Dashboard
+              config={config.data}
+              plan={plan.data}
+              error={plan.error ? plan.error.message : null}
+            />
           </div>
         </div>
         <div className={contentCls("test")} data-scrollkick="">
@@ -272,18 +265,6 @@ function ModeSwitch({ mode, onChange }: { mode: AppMode; onChange: (m: AppMode) 
   );
 }
 
-function metaLine(plan: PlanResponse): string {
-  const last = plan.intervals[plan.intervals.length - 1];
-  const horizonH =
-    plan.intervals.length && last
-      ? Math.round((Date.parse(last.end) - Date.parse(plan.intervals[0]!.start)) / 3_600_000)
-      : 0;
-  return (
-    `computed ${fmtTime(Date.parse(plan.computed_at))} · ${plan.solver_status} · ` +
-    `${Math.round(plan.solve_ms)} ms · ${plan.intervals.length} intervals · horizon ${horizonH} h`
-  );
-}
-
 function loadForecastLine(plan: PlanResponse): string | null {
   const lf = plan.meta.load_forecast_info;
   if (plan.meta.load_forecast !== "learned" || !lf?.window_days) return null;
@@ -327,9 +308,11 @@ function lifecycleBanner(config: ConfigResponse | undefined): string | null {
 function Dashboard({
   config,
   plan,
+  error,
 }: {
   config: ConfigResponse | undefined;
   plan: PlanResponse | undefined;
+  error: string | null;
 }) {
   // True while a config save waits for the planner's re-solve: the plan on
   // screen is the pre-save one, so grey it out rather than let it read as
@@ -344,9 +327,13 @@ function Dashboard({
   const banner = lifecycleBanner(config);
   if (!plan) {
     return (
-      <div>
+      <div className="flex flex-col gap-3.5">
         {banner && <Banner text={banner} />}
-        <div className="p-6 text-center text-muted-foreground">loading…</div>
+        {error ? (
+          <div className="p-6 text-center text-sm text-destructive">{error}</div>
+        ) : (
+          <div className="p-6 text-center text-muted-foreground">loading…</div>
+        )}
       </div>
     );
   }
@@ -367,6 +354,7 @@ function Dashboard({
           </span>
         </div>
       )}
+      {error && <div className="text-xs text-destructive">{error}</div>}
       {banner && <Banner text={banner} />}
       {vacationBanner(plan) && <Banner text={vacationBanner(plan) as string} />}
       {warningText(plan) && <Banner text={warningText(plan) as string} />}

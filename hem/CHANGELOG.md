@@ -19,6 +19,13 @@
   (the simulate API takes whole config sections instead of ad-hoc overrides,
   and the daily-target price multiple now applies in simulations exactly as it
   does live).
+- The app bar's plan-meta strip ("computed … · optimal · … ms · … intervals ·
+  horizon …") is gone — the bar serves both Live and Test modes, where live
+  diagnostics could mislead. The hero card's "Why this action?" panel is now a
+  general **"More info"** panel carrying the computed time, solver status and
+  solve time alongside the existing explanation; the intervals count is
+  dropped and the horizon is already covered by the Horizon cost tile. Plan
+  fetch errors now surface in the dashboard column instead of the bar.
 - Default battery wear cost lowered from 4c to **3c/kWh**, lining up with the
   realistic lithium range the field help quotes (~0.5–3c). Only affects fresh
   installs — saved configs store the value explicitly, so existing setups keep
