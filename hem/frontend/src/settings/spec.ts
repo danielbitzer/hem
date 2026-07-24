@@ -198,7 +198,7 @@ export const SECTIONS: SectionSpec[] = [
           "battery warranties often imply well under 1c) and use the min battery " +
           "export spread for " +
           "\"only sell when it's worth it\" selectivity instead.",
-        { unit: "$/kWh", min: 0, step: 0.01, default: "0.04" },
+        { unit: "$/kWh", min: 0, step: 0.01, default: "0.03" },
       ),
       {
         path: "battery.allow_grid_charge",

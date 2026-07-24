@@ -113,8 +113,9 @@ A realistic number is your battery's replacement cost divided by its
 lifetime throughput (all the energy it will ever deliver). For most lithium
 batteries that's **half a cent to 3 cents per kWh** — e.g. a $6,000 battery
 good for 300,000 kWh over its life (say 50 kWh of usable capacity × 6,000
-cycles) works out to 2c/kWh. HEM ships with a slightly conservative default
-of 4c — compute your own number and lower it if yours is smaller.
+cycles) works out to 2c/kWh. HEM ships with a default of 3c — the top of
+that realistic range — so compute your own number and lower it if yours is
+smaller.
 
 > **Pitfall — using wear cost to stop cheap exports.** It's tempting to
 > raise the wear cost to mean "don't cycle the battery unless it's really

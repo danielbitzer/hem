@@ -114,7 +114,7 @@ class Battery(BaseModel):
     efficiency_discharge: float = Field(default=0.95, gt=0.5, le=1)
     soc_min: float = Field(default=0.10, ge=0, le=1)
     soc_max: float = Field(default=1.0, ge=0, le=1)
-    wear_cost_per_kwh: float = Field(default=0.04, ge=0)
+    wear_cost_per_kwh: float = Field(default=0.03, ge=0)
     allow_grid_charge: bool = True
     # Sign of the battery power sensor. The mkaiser Sungrow package reports
     # positive while DISCHARGING (confirmed on Dan's install), so

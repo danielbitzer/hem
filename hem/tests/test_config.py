@@ -29,6 +29,8 @@ def test_minimal_config_defaults():
     settings = make_settings()
     assert settings.optimizer.horizon_hours == 36
     assert settings.battery.soc_min == 0.10
+    # 3c = top of the honest lithium wear range the field help quotes
+    assert settings.battery.wear_cost_per_kwh == 0.03
     # haircut defaults OFF: Amber's advanced predicted pricing already tempers
     # over-forecast spikes; a second haircut double-discounts them
     assert settings.optimizer.forecast_haircut == 0.0

@@ -17,6 +17,10 @@
   (the simulate API takes whole config sections instead of ad-hoc overrides,
   and the daily-target price multiple now applies in simulations exactly as it
   does live).
+- Default battery wear cost lowered from 4c to **3c/kWh**, lining up with the
+  realistic lithium range the field help quotes (~0.5–3c). Only affects fresh
+  installs — saved configs store the value explicitly, so existing setups keep
+  whatever they have.
 - Settings polish for the new panel: fields are a single stacked column
   everywhere (label and unit above the control); section cards collapse
   behind their headers (open by default on a fresh install, and any section

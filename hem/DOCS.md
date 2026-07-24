@@ -67,8 +67,8 @@ lowers the value of stored energy (see the hold value under `optimizer`), so rai
 makes the battery cycle **less**, as you'd expect. A reasonable value is replacement cost
 ÷ lifetime throughput; realistic lithium is **~0.5–3c/kWh** (e.g. a $6,000 battery
 good for 300,000 kWh of lifetime throughput — 50 kWh usable × 6,000 cycles — is 2c/kWh;
-battery warranties often imply well under 1c). Much above ~4c is usually too high and
-will suppress genuine arbitrage.
+battery warranties often imply well under 1c). The default is 3c, the top of that
+range; much above ~4c is usually too high and will suppress genuine arbitrage.
 
 Note that "every discharged kWh" **includes serving your own house**: the battery only
 covers the load when the buy price beats roughly `wear + hold value/efficiency`, so an
