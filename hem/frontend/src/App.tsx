@@ -89,21 +89,20 @@ export function App() {
   // Content columns are CSS-hidden rather than unmounted so a mode flip
   // never throws away simulation results or dashboard state — and each column
   // is its own scroll container, so dashboard, test results and settings all
-  // keep independent scroll positions.
+  // keep independent scroll positions. The columns are full-bleed (content
+  // centered by an inner wrapper) so their scrollbars sit at the settings
+  // divider and the screen edge instead of overlapping the cards.
   // overflow-x-hidden matters: setting overflow-y alone would compute
   // overflow-x to auto, so any 1px-too-wide child adds a sideways scroll.
   const contentCls = (m: AppMode) =>
-    "min-w-0 max-w-[960px] flex-1 flex-col gap-3.5 overflow-x-hidden overflow-y-auto py-5 " +
-    (mode !== m ? "hidden" : settingsOpen ? "hidden lg:flex" : "flex");
-  const containerCls = settingsOpen ? "max-w-[1460px]" : "max-w-[960px]";
+    "min-w-0 flex-1 overflow-x-hidden overflow-y-auto " +
+    (mode !== m ? "hidden" : settingsOpen ? "hidden lg:block" : "block");
 
   return (
     <div className="flex h-dvh flex-col">
-      {/* Full-bleed header bar; its content aligns with the capped main column */}
+      {/* Full-width app bar: title left, mode switch + gear right */}
       <header className="shrink-0 border-b border-border bg-card px-[22px] py-[18px]">
-        <div
-          className={`mx-auto flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2.5 ${containerCls}`}
-        >
+        <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2.5">
           <div className="min-w-0 max-sm:w-full">
             <h1 className="text-[17px] font-bold text-foreground">Home Energy Manager</h1>
             {plan.data && (
@@ -145,30 +144,33 @@ export function App() {
           </div>
         </div>
       </header>
-      <main
-        className={`mx-auto flex min-h-0 w-full flex-1 items-stretch justify-center gap-5 px-5 ${containerCls}`}
-      >
+      <main className="flex min-h-0 w-full flex-1 items-stretch">
         <div className={contentCls("live")} data-scrollkick="">
-          <Dashboard config={config.data} plan={plan.data} />
+          <div className="mx-auto flex w-full max-w-[960px] flex-col gap-3.5 p-5">
+            <Dashboard config={config.data} plan={plan.data} />
+          </div>
         </div>
         <div className={contentCls("test")} data-scrollkick="">
-          <TestView
-            sandbox={sandbox}
-            sandboxDirty={sandboxDirty}
-            onSandboxErrors={(errors) => {
-              setSandboxErrors(errors);
-              // surface the panel the errors point at
-              if (errors.general.length || Object.keys(errors.fields).length) {
-                setOpenChosen(true);
-              }
-            }}
-          />
+          <div className="mx-auto flex w-full max-w-[960px] flex-col gap-3.5 p-5">
+            <TestView
+              sandbox={sandbox}
+              sandboxDirty={sandboxDirty}
+              onSandboxErrors={(errors) => {
+                setSandboxErrors(errors);
+                // surface the panel the errors point at
+                if (errors.general.length || Object.keys(errors.fields).length) {
+                  setOpenChosen(true);
+                }
+              }}
+            />
+          </div>
         </div>
         {settingsOpen && (
           <aside
-            className="flex w-full min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto py-5 lg:w-[430px] lg:shrink-0"
+            className="w-full min-w-0 overflow-x-hidden overflow-y-auto border-border lg:w-[462px] lg:shrink-0 lg:border-l"
             data-scrollkick=""
           >
+            <div className="flex flex-col gap-3 px-4 py-5">
             {mode === "live" ? (
               <>
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3 px-1">
@@ -206,6 +208,7 @@ export function App() {
                 )}
               </>
             )}
+            </div>
           </aside>
         )}
       </main>

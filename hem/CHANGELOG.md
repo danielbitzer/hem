@@ -22,8 +22,10 @@
   behind their headers (open by default on a fresh install, and any section
   holding a validation error opens itself so a message can never hide);
   the settings panel and the main view scroll independently, keeping the
-  Save/Apply bar always in reach; and the dashboard greys out with a
-  "Re-planning…" pill while a save waits for the optimizer's re-solve.
+  Save/Apply bar always in reach — split by a full-height divider, with each
+  area's scrollbar at the divider / screen edge instead of overlapping the
+  cards; and the dashboard greys out with a "Re-planning…" pill while a save
+  waits for the optimizer's re-solve.
 - `entities.pv_power` (the actual-PV sensor time travel replays solar from)
   moved out of the live Entities section into Test mode ("Time travel data"
   in the test settings panel) — it only affects simulations. Choosing a
