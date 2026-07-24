@@ -14,6 +14,14 @@ import {
   putConfig,
 } from "@/api";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { refetchPlanUntilFresh } from "@/planRefresh";
 import {
   buildDefaults,
@@ -219,63 +227,68 @@ export function SandboxPanel({
       )}
 
       <div className="bg-background/95 sticky bottom-0 border-t py-3 backdrop-blur">
-        {confirming ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm">Overwrite the live settings with these sections?</span>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                disabled={apply.isPending}
-                onClick={() => {
-                  apply.mutate();
-                  setConfirming(false);
-                }}
-              >
-                Apply
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              disabled={!simStatus.canRun || simStatus.pending}
-              onClick={onRun}
-            >
-              {simStatus.pending ? "Running…" : "Run"}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            disabled={!simStatus.canRun || simStatus.pending}
+            onClick={onRun}
+          >
+            {simStatus.pending ? "Running…" : "Run"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!dirty}
+            onClick={() => {
+              if (liveConfig) onChange(buildDefaults(liveConfig));
+              onErrors(NO_SANDBOX_ERRORS);
+              setApplied(false);
+              setApplyError("");
+            }}
+          >
+            Reset to live
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!dirty || apply.isPending}
+            onClick={() => setConfirming(true)}
+          >
+            {apply.isPending ? "Applying…" : "Apply to live"}
+          </Button>
+          {applied && <span className="text-muted-foreground text-sm">Applied to live settings.</span>}
+          {!applied && dirty && (
+            <span className="text-muted-foreground text-xs">Differs from live</span>
+          )}
+        </div>
+      </div>
+
+      <Dialog open={confirming} onOpenChange={setConfirming}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Apply to live settings?</DialogTitle>
+            <DialogDescription>
+              The battery, grid, optimizer and spike sections of your live settings will be
+              overwritten with the sandbox values, and planning picks them up immediately.
+              Entities and everything else stay as saved.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConfirming(false)}>
+              Cancel
             </Button>
             <Button
               type="button"
-              variant="outline"
-              disabled={!dirty}
               onClick={() => {
-                if (liveConfig) onChange(buildDefaults(liveConfig));
-                onErrors(NO_SANDBOX_ERRORS);
-                setApplied(false);
-                setApplyError("");
+                apply.mutate();
+                setConfirming(false);
               }}
             >
-              Reset to live
+              Apply
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!dirty || apply.isPending}
-              onClick={() => setConfirming(true)}
-            >
-              {apply.isPending ? "Applying…" : "Apply to live…"}
-            </Button>
-            {applied && <span className="text-muted-foreground text-sm">Applied to live settings.</span>}
-            {!applied && dirty && (
-              <span className="text-muted-foreground text-xs">Differs from live</span>
-            )}
-          </div>
-        )}
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
