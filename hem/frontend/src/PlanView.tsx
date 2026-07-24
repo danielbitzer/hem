@@ -39,7 +39,7 @@ export function PlanView({ plan, info }: { plan: PlanResponse; info?: string | n
 
   return (
     <>
-      <Hero rows={rows} explanation={plan.meta.explanation} />
+      <Hero rows={rows} explanation={plan.meta.explanation} plan={plan} />
       <Stats plan={plan} rows={rows} />
       <PricesChart rows={chartRows} domain={domain} forecastEnd={fcEnd} />
       <ForecastChart rows={chartRows} domain={domain} info={info ?? null} />

@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from test_config import make_settings
 
 from hem.config_store import ConfigController, ConfigStore
-from hem.simulate import SCENARIOS, SimOverrides, run_simulation, scenario_list
+from hem.simulate import SCENARIOS, run_simulation, scenario_list
 from hem.web.app import AppState, create_app
 
 ADELAIDE = ZoneInfo("Australia/Adelaide")
@@ -50,15 +50,17 @@ def test_every_scenario_solves():
         assert r["solver_status"].startswith("optimal"), sid
 
 
-def test_min_battery_export_price_override_suppresses_low_price_export():
+def test_min_battery_export_price_suppresses_low_price_export():
     # cheap_overnight has a pricey evening (feed-in ~0.30) and cheap nights;
     # a floor above the evening feed-in should cut battery export there.
-    settings = make_settings()
-    base = run_simulation(settings, scenario_id="cheap_overnight", soc_frac=0.9,
+    base = run_simulation(make_settings(), scenario_id="cheap_overnight", soc_frac=0.9,
                           now=NOW, tz=ADELAIDE)
-    floored = run_simulation(settings, scenario_id="cheap_overnight", soc_frac=0.9,
-                             now=NOW, tz=ADELAIDE,
-                             overrides=SimOverrides(min_battery_export_price=0.50))
+    floored_settings = make_settings(
+        grid={"import_limit_kw": 15.0, "export_limit_kw": 5.0,
+              "min_battery_export_price": 0.50},
+    )
+    floored = run_simulation(floored_settings, scenario_id="cheap_overnight", soc_frac=0.9,
+                             now=NOW, tz=ADELAIDE)
     def batt_export(r):
         return sum(iv["grid_export_kw"] for iv in r["intervals"] if iv["action"] == "discharge")
 
@@ -91,12 +93,57 @@ def test_api_simulate_requires_config(tmp_path):
     assert resp.status_code == 409
 
 
-def test_api_simulate_accepts_overrides(tmp_path):
+def test_api_simulate_accepts_sandbox_config(tmp_path):
+    # Test mode sends whole sandbox sections that REPLACE the live ones.
     client = TestClient(create_app(AppState(), _controller(tmp_path, make_settings())))
     resp = client.post(
         "/api/simulate",
         json={"scenario": "typical", "soc_frac": 0.5,
-              "overrides": {"wear_cost_per_kwh": 0.03, "min_battery_export_price": 0.13}},
+              "config": {
+                  "battery": {"capacity_kwh": 20.0, "max_charge_kw": 8.0,
+                              "max_discharge_kw": 8.0, "wear_cost_per_kwh": 0.03},
+                  "grid": {"import_limit_kw": 15.0, "export_limit_kw": 5.0,
+                           "min_battery_export_price": 0.13},
+              }},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["solver_status"].startswith("optimal")
+    assert body["meta"]["capacity_kwh"] == 20.0  # sandbox section took effect
+
+
+def test_api_simulate_empty_sandbox_section_means_defaults_not_live(tmp_path):
+    # The frontend always sends all four sections; an empty one must REPLACE
+    # the live section (pydantic defaults), not silently keep live values.
+    settings = make_settings(optimizer={"import_penalty_per_kwh": 0.05})
+    client = TestClient(create_app(AppState(), _controller(tmp_path, settings)))
+    resp = client.post(
+        "/api/simulate", json={"scenario": "typical", "config": {"optimizer": {}}}
     )
     assert resp.status_code == 200
     assert resp.json()["solver_status"].startswith("optimal")
+
+
+def test_api_simulate_invalid_sandbox_config_is_422_with_field_errors(tmp_path):
+    client = TestClient(create_app(AppState(), _controller(tmp_path, make_settings())))
+    resp = client.post(
+        "/api/simulate",
+        json={"scenario": "typical",
+              "config": {"battery": {"capacity_kwh": -1.0, "max_charge_kw": 5.0,
+                                     "max_discharge_kw": 5.0}}},
+    )
+    assert resp.status_code == 422
+    errors = resp.json()["errors"]
+    assert any(e["loc"].startswith("battery.capacity_kwh") for e in errors)
+
+
+def test_api_simulate_sandbox_never_touches_the_saved_config(tmp_path):
+    controller = _controller(tmp_path, make_settings())
+    client = TestClient(create_app(AppState(), controller))
+    client.post(
+        "/api/simulate",
+        json={"scenario": "typical",
+              "config": {"battery": {"capacity_kwh": 99.0, "max_charge_kw": 5.0,
+                                     "max_discharge_kw": 5.0}}},
+    )
+    assert controller.current.battery.capacity_kwh == 12.8

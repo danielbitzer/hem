@@ -148,17 +148,6 @@ export const ScenarioSchema = z.object({
 });
 export type Scenario = z.infer<typeof ScenarioSchema>;
 
-export interface SimOverrides {
-  wear_cost_per_kwh?: number | null;
-  hold_value_scaling?: number | null;
-  min_battery_export_spread?: number | null;
-  min_battery_export_price?: number | null;
-  import_penalty_per_kwh?: number | null;
-  daily_target_soc?: number | null;
-  daily_target_hold_hours?: number | null;
-  daily_target_penalty_per_kwh?: number | null;
-}
-
 export async function fetchScenarios(): Promise<Scenario[]> {
   const resp = await fetch("./api/scenarios", { cache: "no-store" });
   if (!resp.ok) throw new Error(`scenarios failed: ${resp.statusText}`);
@@ -171,6 +160,12 @@ async function postSimulation(url: string, body: unknown): Promise<PlanResponse>
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (resp.status === 422) {
+    // The sandbox config failed pydantic validation — same per-field error
+    // shape as PUT /api/config, so the sandbox form can mark the inputs.
+    const body422 = (await resp.json()) as { errors: FieldError[] };
+    throw new ConfigValidationError(body422.errors);
+  }
   if (!resp.ok) {
     let detail = resp.statusText;
     try {
@@ -187,10 +182,15 @@ async function postSimulation(url: string, body: unknown): Promise<PlanResponse>
   return parsed.data;
 }
 
+/** The test-mode sandbox: whole config sections (battery/grid/optimizer/spike,
+ * /api/config document shape) that replace the live ones for this simulation
+ * only. Omitted fields fall back to server defaults, matching the form. */
+export type SandboxConfig = Record<string, unknown>;
+
 export async function runSimulation(req: {
   scenario: string;
   soc_frac: number;
-  overrides?: SimOverrides;
+  config?: SandboxConfig;
 }): Promise<PlanResponse> {
   return postSimulation("./api/simulate", req);
 }
@@ -201,7 +201,7 @@ export async function runSimulation(req: {
 export async function runHistorySimulation(req: {
   at: string;
   soc_frac?: number | null;
-  overrides?: SimOverrides;
+  config?: SandboxConfig;
 }): Promise<PlanResponse> {
   return postSimulation("./api/simulate/history", req);
 }

@@ -2,13 +2,55 @@
 
 ## Unreleased
 
+- **Live/Test mode navigation redesign**: the Dashboard/Settings/Test tabs are
+  gone. The header now carries a top-level **Live | Test** mode switch
+  (Stripe-style; always lands on Live) and a settings gear that opens settings
+  beside the page on wide screens — dashboard and settings visible together at
+  last — and as its own page (gear becomes a back arrow) on phones.
+- **Test settings sandbox**: in Test mode the gear opens a sandbox copy of the
+  live config's battery, grid, optimizer and spike sections. Every simulation
+  runs with the sandbox, so any config change can be previewed against
+  scenarios or time travel without touching the live settings; **Reset to
+  live** re-copies the live config and **Apply to live** promotes the sandbox
+  once you're happy. A **Run** button sits beside them, so tweak-and-compare
+  loops (e.g. watching the planned SoC chart) never require scrolling back to
+  the top of the test column. Replaces the former per-field "Config overrides" list in
+  the Test tab — every solver knob is now sandboxable, not just eight of them
+  (the simulate API takes whole config sections instead of ad-hoc overrides,
+  and the daily-target price multiple now applies in simulations exactly as it
+  does live).
+- The app bar's plan-meta strip ("computed … · optimal · … ms · … intervals ·
+  horizon …") is gone — the bar serves both Live and Test modes, where live
+  diagnostics could mislead. The hero card's "Why this action?" panel is now a
+  general **"More info"** panel carrying the computed time, solver status and
+  solve time alongside the existing explanation; the intervals count is
+  dropped and the horizon is already covered by the Horizon cost tile. Plan
+  fetch errors now surface in the dashboard column instead of the bar.
+- Default battery wear cost lowered from 4c to **3c/kWh**, lining up with the
+  realistic lithium range the field help quotes (~0.5–3c). Only affects fresh
+  installs — saved configs store the value explicitly, so existing setups keep
+  whatever they have.
+- Settings polish for the new panel: fields are a single stacked column
+  everywhere (label and unit above the control); section cards collapse
+  behind their headers (open by default on a fresh install, and any section
+  holding a validation error opens itself so a message can never hide);
+  the settings panel and the main view scroll independently, keeping the
+  Save/Apply bar always in reach — split by a full-height divider, with each
+  area's scrollbar at the divider / screen edge instead of overlapping the
+  cards; and the dashboard greys out with a "Re-planning…" pill while a save
+  waits for the optimizer's re-solve.
+- `entities.pv_power` (the actual-PV sensor time travel replays solar from)
+  moved out of the live Entities section into Test mode ("Time travel data"
+  in the test settings panel) — it only affects simulations. Choosing a
+  sensor there saves to the live settings immediately, since simulations
+  always read entities from the live config.
 - **Import reluctance** (`optimizer.import_penalty_per_kwh`, default 0 = off):
   a virtual per-kWh toll on grid imports in the planning maths (never in
   displayed costs) that biases the plan toward solar and stored energy —
   import-now-to-sell-later bets must beat holding by a bigger margin, since
   the import is certain money and the forecast sell is not. Skipped at
   negative buy prices so paid-to-charge windows stay fully attractive.
-  Available as a Test-mode override to trial before saving.
+  Trialable in the Test-mode sandbox before saving.
 - **New guide: [OPTIMIZER.md](OPTIMIZER.md)** — a plain-language explanation
   of how the optimizer decides (what it weighs, the hold value, when it
   sells, the daily target and spike reserve), with worked examples, common

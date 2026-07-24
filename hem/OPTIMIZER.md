@@ -68,7 +68,7 @@ horizon closed, like a shop dumping stock before closing time. That's wrong,
 because your battery keeps running after the plan ends.
 
 So HEM gives every kWh still stored at the end of the horizon a value: the
-**hold value**, shown in the "Why this action?" panel on the dashboard.
+**hold value**, shown in the "More info" panel on the dashboard.
 
 **How it's set (on "auto"):** stored energy is valued at what it would cost
 to put back — the *cheapest* upcoming import price, plus charging losses. If
@@ -113,8 +113,9 @@ A realistic number is your battery's replacement cost divided by its
 lifetime throughput (all the energy it will ever deliver). For most lithium
 batteries that's **half a cent to 3 cents per kWh** — e.g. a $6,000 battery
 good for 300,000 kWh over its life (say 50 kWh of usable capacity × 6,000
-cycles) works out to 2c/kWh. HEM ships with a slightly conservative default
-of 4c — compute your own number and lower it if yours is smaller.
+cycles) works out to 2c/kWh. HEM ships with a default of 3c — the top of
+that realistic range — so compute your own number and lower it if yours is
+smaller.
 
 > **Pitfall — using wear cost to stop cheap exports.** It's tempting to
 > raise the wear cost to mean "don't cycle the battery unless it's really
@@ -270,7 +271,7 @@ make it a great time to fill the battery.
    usually 0.5–3c/kWh. Resist making it a behaviour knob.
 3. **Give it your load sensor** so the house forecast is learned from
    reality. Without one, HEM plans as if your house uses nothing.
-4. **Let it run in dry-run and watch the "Why this action?" panel** for a
+4. **Let it run in dry-run and watch the "More info" panel** for a
    few days. Every decision shows the prices and hold value behind it.
 5. **Then add preferences**: an export spread if thin-margin cycling annoys
    you; the daily target if you want full-battery insurance; the spike

@@ -26,6 +26,10 @@ export interface FieldSpec {
   domains?: string[];
   /** Entity picker: empty means "not used" instead of invalid. */
   optional?: boolean;
+  /** Only shown in Test mode (the field feeds simulations, not live
+   * planning). Still part of ALL_FIELDS so the live form round-trips the
+   * stored value instead of wiping it on save. */
+  testOnly?: boolean;
 }
 
 export interface SectionSpec {
@@ -121,10 +125,10 @@ export const SECTIONS: SectionSpec[] = [
         "entities.pv_power",
         "PV power (actual)",
         "Your inverter's actual PV generation power sensor (W or kW) — distinct " +
-          "from the forecast sensors above. Used by Test mode's time travel to " +
-          "replay real solar; without it, historical replays assume zero PV.",
+          "from the forecast sensors above. Time travel replays real solar from " +
+          "its history; without it, historical replays assume zero PV.",
         ["sensor"],
-        { optional: true, default: "" },
+        { optional: true, default: "", testOnly: true },
       ),
     ],
   },
@@ -194,7 +198,7 @@ export const SECTIONS: SectionSpec[] = [
           "battery warranties often imply well under 1c) and use the min battery " +
           "export spread for " +
           "\"only sell when it's worth it\" selectivity instead.",
-        { unit: "$/kWh", min: 0, step: 0.01, default: "0.04" },
+        { unit: "$/kWh", min: 0, step: 0.01, default: "0.03" },
       ),
       {
         path: "battery.allow_grid_charge",

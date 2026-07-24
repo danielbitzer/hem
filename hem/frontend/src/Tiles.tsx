@@ -93,8 +93,17 @@ function HelpBadge({ label, help }: { label: string; help: string }) {
 }
 
 /** Action-now hero card: the optimiser's current call at a glance, with an
- * expandable "why" panel that narrates the numbers behind it. */
-export function Hero({ rows, explanation }: { rows: Row[]; explanation?: Explanation | null }) {
+ * expandable "More info" panel that narrates the numbers behind it plus the
+ * plan's diagnostics (computed at, solver status, solve time). */
+export function Hero({
+  rows,
+  explanation,
+  plan,
+}: {
+  rows: Row[];
+  explanation?: Explanation | null;
+  plan?: PlanResponse;
+}) {
   const step0 = rows[0];
   if (!step0) return null;
   const forced = step0.action === "charge" || step0.action === "discharge";
@@ -127,7 +136,7 @@ export function Hero({ rows, explanation }: { rows: Row[]; explanation?: Explana
           </div>
         </div>
       </div>
-      {explanation && <WhyThisAction explanation={explanation} />}
+      {explanation && <MoreInfo explanation={explanation} plan={plan} />}
     </div>
   );
 }
@@ -188,7 +197,7 @@ function Chip({ children }: { children: ReactNode }) {
   );
 }
 
-function WhyThisAction({ explanation }: { explanation: Explanation }) {
+function MoreInfo({ explanation, plan }: { explanation: Explanation; plan?: PlanResponse }) {
   const [open, setOpen] = useState(false);
   const { reason, values: v, context: c, levers: l, stale } = explanation;
   const bat = batteryText(v.battery_kw);
@@ -216,7 +225,7 @@ function WhyThisAction({ explanation }: { explanation: Explanation }) {
         className="flex w-full cursor-pointer items-center gap-1.5 text-left text-[13px] font-medium text-muted-foreground hover:text-foreground"
       >
         <ChevronRight className={`size-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
-        Why this action?
+        More info
       </button>
       {open && (
         <div className="mt-3 space-y-3">
@@ -245,6 +254,15 @@ function WhyThisAction({ explanation }: { explanation: Explanation }) {
           </dl>
           {chips.length > 0 && (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">{chips}</div>
+          )}
+          {plan && (
+            // Plan-level diagnostics (vs the per-interval numbers above) —
+            // moved here from the app bar, which also serves test mode.
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-border pt-3 sm:grid-cols-3">
+              <Metric label="Computed" value={fmtTime(Date.parse(plan.computed_at))} />
+              <Metric label="Solver" value={plan.solver_status} />
+              <Metric label="Solve time" value={`${Math.round(plan.solve_ms)} ms`} />
+            </dl>
           )}
         </div>
       )}

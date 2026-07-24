@@ -121,6 +121,16 @@
     @apply bg-background text-foreground m-0 text-sm;
     line-height: 1.45;
   }
+  /* App shell: the split-view columns own ALL scrolling. The document must
+     never scroll itself — portalled dropdowns and focus scroll-into-view can
+     otherwise push the page past the columns, revealing dead space below
+     (Radix popovers position fixed, so clipping the body doesn't affect
+     them). */
+  html,
+  body {
+    height: 100dvh;
+    overflow: hidden;
+  }
 }
 
 @layer base {

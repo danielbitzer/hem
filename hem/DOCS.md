@@ -53,9 +53,11 @@ the price sensors themselves, so the two price entities are all HEM needs for
 both live prices and forecasts.
 
 `pv_power` (optional) is your **actual** PV generation power sensor (W or kW,
-e.g. the mkaiser package's `total_dc_power`) — distinct from the
-`pv_forecast_*` forecast sensors. It feeds Test mode's time travel, which
-replays real recorded solar; without it, historical replays assume zero PV.
+e.g. your inverter's total DC power) — distinct from the `pv_forecast_*`
+forecast sensors. It feeds Test mode's time travel, which replays real
+recorded solar; without it, historical replays assume zero PV. Because it only
+matters to Test mode, the UI shows it there ("Time travel data" in the test
+settings panel) rather than in the live Entities section.
 
 ### `battery`
 
@@ -65,8 +67,8 @@ lowers the value of stored energy (see the hold value under `optimizer`), so rai
 makes the battery cycle **less**, as you'd expect. A reasonable value is replacement cost
 ÷ lifetime throughput; realistic lithium is **~0.5–3c/kWh** (e.g. a $6,000 battery
 good for 300,000 kWh of lifetime throughput — 50 kWh usable × 6,000 cycles — is 2c/kWh;
-battery warranties often imply well under 1c). Much above ~4c is usually too high and
-will suppress genuine arbitrage.
+battery warranties often imply well under 1c). The default is 3c, the top of that
+range; much above ~4c is usually too high and will suppress genuine arbitrage.
 
 Note that "every discharged kWh" **includes serving your own house**: the battery only
 covers the load when the buy price beats roughly `wear + hold value/efficiency`, so an
@@ -304,10 +306,15 @@ action/setpoint/SoC/cost tiles plus charts of prices, PV/load forecast, planned
 battery power with grid flows, and the SoC trajectory. Auto-refreshes every
 minute; fully offline (no CDN).
 
+The page has two top-level modes, switched in the header: **Live** (the real
+plan, and settings that apply immediately when saved) and **Test** (a
+simulation sandbox — nothing in it touches your live plan or the inverter).
+The gear button opens settings beside the page on wide screens and as its own
+page on phones; what it opens depends on the mode.
+
 ### Test mode
 
-The **Test** tab runs the optimizer without touching your live plan or the
-inverter, in two ways:
+Test mode runs the optimizer against data of your choosing, in two ways:
 
 - **Scenarios** — hand-made price shapes ("price spike tonight", "negative
   feed-in tomorrow", …) with a starting-SoC slider.
@@ -318,10 +325,16 @@ inverter, in two ways:
   forecast HEM saw at the time, so it shows how your settings value the real
   day, not a re-run of the historical decision. Reach is limited by HA's
   recorder retention (~10 days by default), and real solar needs the optional
-  `entities.pv_power` sensor.
+  `entities.pv_power` sensor — set under "Time travel data" in the test
+  settings panel (it saves to your live settings; simulations always read
+  entities from the live config).
 
-Both accept live config overrides (wear cost, hold value scaling, export
-floor/deadband, daily target) so you can preview a change before saving it.
+In Test mode the gear opens **test settings**: a sandbox copy of the live
+config's battery, grid, optimizer and spike sections. Every simulation uses
+the sandbox, so you can preview any config change — a different wear cost, a
+bigger battery, a new export floor — without touching your live settings.
+**Reset to live** re-copies the live config; **Apply to live** promotes the
+sandbox sections to the real config once you're happy with them.
 
 ## Controlling your inverter (the actuator automation)
 
