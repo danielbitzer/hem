@@ -69,10 +69,17 @@ function SocSlider({
   );
 }
 
+export interface SimStatus {
+  pending: boolean;
+  canRun: boolean;
+}
+
 export function TestView({
   sandbox,
   sandboxDirty,
   onSandboxErrors,
+  registerRun,
+  onSimStatus,
 }: {
   /** The sandbox config sections sent with every simulation (null until the
    * live config has loaded). */
@@ -80,6 +87,10 @@ export function TestView({
   sandboxDirty: boolean;
   /** Simulate rejected the sandbox config — errors for the settings panel. */
   onSandboxErrors: (errors: SandboxErrors) => void;
+  /** Hands the current run-trigger up so the settings panel's Run button can
+   * re-run without scrolling back to this card. */
+  registerRun: (run: () => void) => void;
+  onSimStatus: (status: SimStatus) => void;
 }) {
   const scenarios = useQuery({ queryKey: ["scenarios"], queryFn: fetchScenarios });
   const [mode, setMode] = useState<Mode>("scenario");
@@ -113,6 +124,15 @@ export function TestView({
   const chosen = scenarios.data?.find((s) => s.id === scenario);
   const canRun = mode === "scenario" ? Boolean(scenario) : Boolean(at);
   const notes = sim.data?.meta.notes ?? [];
+
+  // Re-register every render (no deps) so the panel's Run always triggers
+  // with the CURRENT scenario/time/SoC selections.
+  useEffect(() => {
+    registerRun(() => sim.mutate());
+  });
+  useEffect(() => {
+    onSimStatus({ pending: sim.isPending, canRun });
+  }, [onSimStatus, sim.isPending, canRun]);
   const simError =
     sim.error instanceof ConfigValidationError
       ? "The test settings are invalid — see the errors in the settings panel."

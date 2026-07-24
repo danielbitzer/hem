@@ -12,7 +12,9 @@
   runs with the sandbox, so any config change can be previewed against
   scenarios or time travel without touching the live settings; **Reset to
   live** re-copies the live config and **Apply to live** promotes the sandbox
-  once you're happy. Replaces the former per-field "Config overrides" list in
+  once you're happy. A **Run** button sits beside them, so tweak-and-compare
+  loops (e.g. watching the planned SoC chart) never require scrolling back to
+  the top of the test column. Replaces the former per-field "Config overrides" list in
   the Test tab — every solver knob is now sandboxable, not just eight of them
   (the simulate API takes whole config sections instead of ad-hoc overrides,
   and the daily-target price multiple now applies in simulations exactly as it

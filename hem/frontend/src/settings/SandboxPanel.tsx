@@ -104,6 +104,8 @@ export function SandboxPanel({
   onErrors,
   liveConfig,
   dirty,
+  onRun,
+  simStatus,
 }: {
   values: FormValues;
   onChange: (v: FormValues) => void;
@@ -114,6 +116,10 @@ export function SandboxPanel({
   /** Sandbox differs from a fresh copy of the live config (computed in App —
    * it disables Reset/Apply when there is nothing to reset or apply). */
   dirty: boolean;
+  /** Re-run the current simulation (TestView owns it) so tweak-and-compare
+   * loops don't require scrolling back to the top of the test column. */
+  onRun: () => void;
+  simStatus: { pending: boolean; canRun: boolean };
 }) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
@@ -237,6 +243,13 @@ export function SandboxPanel({
           <div className="flex flex-wrap items-center gap-3">
             <Button
               type="button"
+              disabled={!simStatus.canRun || simStatus.pending}
+              onClick={onRun}
+            >
+              {simStatus.pending ? "Running…" : "Run"}
+            </Button>
+            <Button
+              type="button"
               variant="outline"
               disabled={!dirty}
               onClick={() => {
@@ -248,7 +261,12 @@ export function SandboxPanel({
             >
               Reset to live
             </Button>
-            <Button type="button" disabled={!dirty || apply.isPending} onClick={() => setConfirming(true)}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!dirty || apply.isPending}
+              onClick={() => setConfirming(true)}
+            >
               {apply.isPending ? "Applying…" : "Apply to live…"}
             </Button>
             {applied && <span className="text-muted-foreground text-sm">Applied to live settings.</span>}

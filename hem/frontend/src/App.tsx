@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, FlaskConical, Settings as SettingsIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type ConfigResponse, fetchConfig, fetchPlanOrExplain, type PlanResponse } from "./api";
 import { installIosScrollKick } from "./iosScrollKick";
 import { PLAN_REFRESHING_KEY } from "./planRefresh";
@@ -14,7 +14,7 @@ import {
 } from "./settings/form";
 import { SandboxPanel } from "./settings/SandboxPanel";
 import { SettingsView } from "./settings/SettingsView";
-import { TestView } from "./TestView";
+import { type SimStatus, TestView } from "./TestView";
 import { fmtTime } from "./theme";
 
 const REFRESH_MS = 60_000;
@@ -85,6 +85,12 @@ export function App() {
     sandbox !== null &&
     liveConfig !== null &&
     JSON.stringify(sandbox) !== JSON.stringify(sandboxDoc(buildDefaults(liveConfig), liveConfig));
+
+  // Bridge between TestView (which owns the simulation) and the sandbox
+  // panel's Run button, so a re-run doesn't require scrolling back to the
+  // top of the test column.
+  const runSimRef = useRef<() => void>(() => {});
+  const [simStatus, setSimStatus] = useState<SimStatus>({ pending: false, canRun: false });
 
   // Content columns are CSS-hidden rather than unmounted so a mode flip
   // never throws away simulation results or dashboard state — and each column
@@ -162,6 +168,10 @@ export function App() {
                   setOpenChosen(true);
                 }
               }}
+              registerRun={(run) => {
+                runSimRef.current = run;
+              }}
+              onSimStatus={setSimStatus}
             />
           </div>
         </div>
@@ -199,6 +209,8 @@ export function App() {
                     onErrors={setSandboxErrors}
                     liveConfig={liveConfig}
                     dirty={sandboxDirty}
+                    onRun={() => runSimRef.current()}
+                    simStatus={simStatus}
                   />
                 ) : (
                   <div className="text-muted-foreground rounded-lg border border-dashed border-border p-6 text-center text-sm">
