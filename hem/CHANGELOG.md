@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0
 
 - **Live/Test mode navigation redesign**: the Dashboard/Settings/Test tabs are
   gone. The header now carries a top-level **Live | Test** mode switch
